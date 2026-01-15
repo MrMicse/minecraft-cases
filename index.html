@@ -39,11 +39,28 @@
                     <button class="close-modal" id="close-modal">&times;</button>
                 </div>
                 <div class="modal-body">
-                    <div class="case-3d-container">
-                        <div class="case-preview">
-                            <div class="case-preview-icon" id="case-preview-icon">🎁</div>
+                    <!-- Контейнер для рулетки (скрыт по умолчанию) -->
+                    <div class="roulette-container" id="roulette-container">
+                        <div class="roulette-wheel">
+                            <div class="center-indicator">
+                                <div class="indicator-arrow">▼</div>
+                                <div class="indicator-line"></div>
+                            </div>
+                            <div class="items-track" id="items-track">
+                                <!-- Предметы будут добавлены через JS -->
+                            </div>
                         </div>
                     </div>
+
+                    <!-- Контейнер для превью кейса (показывается по умолчанию) -->
+                    <div class="case-preview-section" id="case-preview-section">
+                        <div class="case-3d-container">
+                            <div class="case-preview">
+                                <div class="case-preview-icon" id="case-preview-icon">🎁</div>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div class="case-info">
                         <p class="case-price">Цена: <span id="case-price-value">100</span> 💎</p>
                         <button class="btn-open-case" id="open-case-btn">
@@ -93,30 +110,6 @@
                         </div>
                         <button class="btn-close-result" id="close-result">Продолжить</button>
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Экран открытия кейса с рулеткой -->
-        <div class="case-opening-overlay" id="case-opening-overlay">
-            <div class="roulette-container">
-                <div class="roulette-header">
-                    <h2>Открытие кейса</h2>
-                    <button class="close-roulette" id="close-roulette">&times;</button>
-                </div>
-                
-                <div class="roulette-wheel">
-                    <div class="center-indicator">
-                        <div class="indicator-arrow">▼</div>
-                        <div class="indicator-line"></div>
-                    </div>
-                    
-                    <div class="items-track" id="items-track">
-                        <!-- Предметы будут добавлены через JS -->
-                    </div>
-                    
-                    <!-- Статус открытия -->
-                    <div class="opening-status" id="opening-status">Подготовка...</div>
                 </div>
             </div>
         </div>

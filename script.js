@@ -1,4 +1,3 @@
-
 // Инициализация Telegram Web App
 const tg = window.Telegram?.WebApp;
 if (tg) {
@@ -22,8 +21,6 @@ let isOpening = false;
 let scrollPosition = 0;
 let targetScroll = 0;
 let isScrolling = false;
-let scrollAnimationId = null;
-let itemWidth = 135;
 let rouletteItems = [];
 let winningItemIndex = 0;
 let animationStartTime = 0;
@@ -41,19 +38,18 @@ const elements = {
     caseModal: document.getElementById('case-modal'),
     inventoryModal: document.getElementById('inventory-modal'),
     resultModal: document.getElementById('result-modal'),
-    caseOpeningOverlay: document.getElementById('case-opening-overlay'),
     loadingOverlay: document.getElementById('loading'),
+    
+    // Секции модального окна кейса
+    rouletteContainer: document.getElementById('roulette-container'),
+    casePreviewSection: document.getElementById('case-preview-section'),
     
     // Кнопки
     inventoryBtn: document.getElementById('inventory-btn'),
     closeModal: document.getElementById('close-modal'),
     closeInventory: document.getElementById('close-inventory'),
     closeResult: document.getElementById('close-result'),
-    closeRoulette: document.getElementById('close-roulette'),
     openCaseBtn: document.getElementById('open-case-btn'),
-    
-    // Элементы рулетки
-    openingStatus: document.getElementById('opening-status'),
     
     // Текстовые элементы
     caseName: document.getElementById('case-name'),
@@ -218,6 +214,18 @@ function updateUI() {
     saveUserData();
 }
 
+// Показать рулетку
+function showRoulette() {
+    if (elements.casePreviewSection) elements.casePreviewSection.style.display = 'none';
+    if (elements.rouletteContainer) elements.rouletteContainer.style.display = 'block';
+}
+
+// Показать превью кейса
+function showCasePreview() {
+    if (elements.rouletteContainer) elements.rouletteContainer.style.display = 'none';
+    if (elements.casePreviewSection) elements.casePreviewSection.style.display = 'block';
+}
+
 // Отрисовка кейсов с превью предметов
 function renderCases() {
     console.log('Отрисовка кейсов...');
@@ -324,6 +332,11 @@ function openCaseModal(caseItem) {
     console.log('Открытие модального окна кейса:', caseItem.name);
     currentCase = caseItem;
     
+    // Сбрасываем состояние рулетки
+    showCasePreview();
+    isOpening = false;
+    isRouletteActive = false;
+    
     elements.caseName.textContent = caseItem.name;
     elements.casePriceValue.textContent = caseItem.price;
     elements.openPrice.textContent = caseItem.price;
@@ -416,9 +429,15 @@ async function openCase() {
     currentItem = wonItem;
     console.log('Выигрышный предмет:', wonItem);
     
-    // Показываем рулетку
-    hideModal(elements.caseModal);
-    await showRouletteAnimation(wonItem);
+    // Показываем рулетку вместо смайлика
+    showRoulette();
+    
+    // Отключаем кнопку открытия
+    elements.openCaseBtn.disabled = true;
+    elements.openCaseBtn.innerHTML = '⏳ Открывается...';
+    
+    // Настраиваем рулетку
+    await setupRoulette(wonItem);
 }
 
 // Генерация выигрышного предмета
@@ -451,29 +470,18 @@ function generateWonItem(caseItem) {
     return randomItem;
 }
 
-// Показ рулетки с анимацией
-function showRouletteAnimation(wonItem) {
-    console.log('Запуск рулетки с предметом:', wonItem);
+// Настройка рулетки
+function setupRoulette(wonItem) {
     return new Promise((resolve) => {
         isOpening = true;
         isRouletteActive = true;
-        
-        // Показываем оверлей рулетки
-        elements.caseOpeningOverlay.style.display = 'flex';
-        setTimeout(() => {
-            elements.caseOpeningOverlay.style.opacity = '1';
-            elements.caseOpeningOverlay.classList.add('active');
-        }, 10);
-        
-        // Обновляем статус
-        elements.openingStatus.textContent = "Запуск рулетки...";
         
         // Генерируем последовательность предметов
         rouletteItems = generateRouletteSequence(wonItem);
         console.log('Сгенерирована последовательность:', rouletteItems.length, 'предметов');
         
         // Находим индекс выигрышного предмета в последовательности
-        winningItemIndex = rouletteItems.length - 3; // Помещаем ближе к концу
+        winningItemIndex = rouletteItems.length - 4; // Помещаем ближе к концу
         
         // Отрисовываем предметы
         renderRouletteItems();
@@ -489,7 +497,7 @@ function showRouletteAnimation(wonItem) {
 // Генерация последовательности предметов для рулетки
 function generateRouletteSequence(wonItem) {
     const sequence = [];
-    const sequenceLength = 30;
+    const sequenceLength = 25;
     
     // Добавляем случайные предметы
     for (let i = 0; i < sequenceLength - 5; i++) {
@@ -506,20 +514,29 @@ function generateRouletteSequence(wonItem) {
         sequence.push({...wonItem});
     }
     
+    // Добавляем дополнительные предметы в начало для плавности
+    for (let i = 0; i < 5; i++) {
+        const rarities = ['common', 'uncommon'];
+        const randomRarity = rarities[Math.floor(Math.random() * rarities.length)];
+        const items = minecraftItems[randomRarity] || minecraftItems.common;
+        const randomItem = {...items[Math.floor(Math.random() * items.length)]};
+        randomItem.rarity = randomRarity;
+        sequence.unshift(randomItem);
+    }
+    
     return sequence;
 }
 
 // Отрисовка предметов в рулетке
 function renderRouletteItems() {
     console.log('Отрисовка рулетки...');
+    if (!elements.itemsTrack) return;
+    
     elements.itemsTrack.innerHTML = '';
     
     rouletteItems.forEach((item, index) => {
         const rouletteItem = document.createElement('div');
         rouletteItem.className = `roulette-item ${item.rarity}`;
-        if (index >= rouletteItems.length - 5) {
-            rouletteItem.classList.add('winning-item');
-        }
         
         rouletteItem.innerHTML = `
             <div class="roulette-item-icon">${item.icon}</div>
@@ -541,7 +558,13 @@ function startRouletteAnimation(resolve) {
     isScrolling = true;
     
     const rouletteWheel = document.querySelector('.roulette-wheel');
+    if (!rouletteWheel) {
+        console.error('Элемент рулетки не найден');
+        return;
+    }
+    
     const containerWidth = rouletteWheel.clientWidth;
+    const itemWidth = 102; // Ширина одного предмета с отступами
     const trackWidth = itemWidth * rouletteItems.length;
     const centerOffset = (containerWidth - itemWidth) / 2;
     
@@ -551,6 +574,16 @@ function startRouletteAnimation(resolve) {
     // Ограничиваем скролл
     const maxScroll = trackWidth - containerWidth + centerOffset;
     targetScroll = Math.max(-maxScroll, Math.min(targetScroll, centerOffset));
+    
+    console.log('Параметры анимации:', {
+        containerWidth,
+        itemWidth,
+        trackWidth,
+        centerOffset,
+        targetScroll,
+        maxScroll,
+        winningItemIndex
+    });
     
     // Запоминаем время начала анимации
     animationStartTime = Date.now();
@@ -566,17 +599,6 @@ function animateRoulette(resolve) {
     const elapsed = Date.now() - animationStartTime;
     let progress = Math.min(elapsed / animationDuration, 1);
     
-    // Обновляем статус
-    if (progress < 0.3) {
-        elements.openingStatus.textContent = "Рулетка запущена...";
-    } else if (progress < 0.7) {
-        elements.openingStatus.textContent = "Вращение...";
-    } else if (progress < 0.9) {
-        elements.openingStatus.textContent = "Замедление...";
-    } else {
-        elements.openingStatus.textContent = "Почти готово!";
-    }
-    
     // Кривая замедления для плавного старта и остановки
     let easeProgress;
     if (progress < 0.8) {
@@ -588,10 +610,12 @@ function animateRoulette(resolve) {
         easeProgress = 0.8 + (1 - Math.pow(1 - slowProgress, 3)) * 0.2;
     }
     
-    // Прокручиваем трек
+    // Прокручиваем трек справа налево
     const currentScroll = easeProgress * targetScroll;
     scrollPosition = currentScroll;
-    elements.itemsTrack.style.transform = `translateX(${scrollPosition}px)`;
+    if (elements.itemsTrack) {
+        elements.itemsTrack.style.transform = `translateX(${scrollPosition}px)`;
+    }
     
     // Определяем предмет в центре
     updateHighlightedItem();
@@ -608,14 +632,16 @@ function animateRoulette(resolve) {
 // Обновление подсвеченного предмета
 function updateHighlightedItem() {
     const container = document.querySelector('.roulette-wheel');
+    if (!container) return;
+    
     const containerRect = container.getBoundingClientRect();
     const containerCenter = containerRect.left + containerRect.width / 2;
     
-    const rouletteItems = document.querySelectorAll('.roulette-item');
+    const items = document.querySelectorAll('.roulette-item');
     let closestItem = null;
     let minDistance = Infinity;
     
-    rouletteItems.forEach((item, index) => {
+    items.forEach((item, index) => {
         const itemRect = item.getBoundingClientRect();
         const itemCenter = itemRect.left + itemRect.width / 2;
         const distance = Math.abs(itemCenter - containerCenter);
@@ -628,7 +654,7 @@ function updateHighlightedItem() {
         }
     });
     
-    if (closestItem && minDistance < 100) {
+    if (closestItem && minDistance < 60) {
         closestItem.item.classList.add('highlighted');
     }
 }
@@ -637,7 +663,6 @@ function updateHighlightedItem() {
 function finishRouletteAnimation(resolve) {
     console.log('Завершение анимации рулетки');
     isScrolling = false;
-    elements.openingStatus.textContent = "Рулетка остановлена! 🎉";
     
     // Находим подсвеченный предмет (выигрышный)
     const highlightedItem = document.querySelector('.roulette-item.highlighted');
@@ -687,24 +712,36 @@ function finishRouletteAnimation(resolve) {
             
             // Показываем результат через 1.5 секунды
             setTimeout(() => {
-                // Скрываем рулетку
-                elements.caseOpeningOverlay.style.opacity = '0';
-                setTimeout(() => {
-                    elements.caseOpeningOverlay.style.display = 'none';
-                    elements.caseOpeningOverlay.classList.remove('active');
-                    
-                    // Показываем результат
-                    showResult(currentItem);
-                    isOpening = false;
-                    isRouletteActive = false;
-                    resolve();
-                }, 500);
+                // Скрываем модальное окно кейса
+                hideModal(elements.caseModal);
+                
+                // Показываем результат
+                showResult(currentItem);
+                isOpening = false;
+                isRouletteActive = false;
+                resolve();
             }, 1500);
         } else {
             console.error('Не удалось найти данные предмета:', itemName, itemIcon);
+            // В случае ошибки все равно показываем результат
+            setTimeout(() => {
+                hideModal(elements.caseModal);
+                showResult(currentItem);
+                isOpening = false;
+                isRouletteActive = false;
+                resolve();
+            }, 1500);
         }
     } else {
         console.error('Не найден подсвеченный предмет');
+        // В случае ошибки все равно показываем результат
+        setTimeout(() => {
+            hideModal(elements.caseModal);
+            showResult(currentItem);
+            isOpening = false;
+            isRouletteActive = false;
+            resolve();
+        }, 1500);
     }
 }
 
@@ -802,17 +839,21 @@ function hideModal(modal) {
 }
 
 function showLoading() {
-    elements.loadingOverlay.style.display = 'flex';
-    setTimeout(() => {
-        elements.loadingOverlay.style.opacity = '1';
-    }, 10);
+    if (elements.loadingOverlay) {
+        elements.loadingOverlay.style.display = 'flex';
+        setTimeout(() => {
+            elements.loadingOverlay.style.opacity = '1';
+        }, 10);
+    }
 }
 
 function hideLoading() {
-    elements.loadingOverlay.style.opacity = '0';
-    setTimeout(() => {
-        elements.loadingOverlay.style.display = 'none';
-    }, 300);
+    if (elements.loadingOverlay) {
+        elements.loadingOverlay.style.opacity = '0';
+        setTimeout(() => {
+            elements.loadingOverlay.style.display = 'none';
+        }, 300);
+    }
 }
 
 // Добавление тестовых предметов (для разработки)
@@ -833,21 +874,28 @@ function addTestItems() {
     }
 }
 
-// Обработчики событий
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM загружен, настраиваем обработчики...');
+// Инициализация обработчиков событий
+function initEventListeners() {
+    console.log('Настройка обработчиков событий...');
     
-    // Инициализация приложения
-    initApp();
-    
-    // Настройка обработчиков событий
     if (elements.inventoryBtn) {
         elements.inventoryBtn.addEventListener('click', openInventoryModal);
         console.log('Кнопка инвентаря настроена');
     }
     
     if (elements.closeModal) {
-        elements.closeModal.addEventListener('click', () => hideModal(elements.caseModal));
+        elements.closeModal.addEventListener('click', () => {
+            // Если рулетка активна, не закрываем
+            if (isRouletteActive) {
+                if (confirm('Рулетка все еще активна. Вы уверены, что хотите отменить открытие?')) {
+                    isRouletteActive = false;
+                    hideModal(elements.caseModal);
+                    showCasePreview(); // Возвращаем превью кейса
+                }
+            } else {
+                hideModal(elements.caseModal);
+            }
+        });
     }
     
     if (elements.closeInventory) {
@@ -856,19 +904,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     if (elements.closeResult) {
         elements.closeResult.addEventListener('click', () => hideModal(elements.resultModal));
-    }
-    
-    if (elements.closeRoulette) {
-        elements.closeRoulette.addEventListener('click', () => {
-            if (!isOpening) {
-                elements.caseOpeningOverlay.style.opacity = '0';
-                setTimeout(() => {
-                    elements.caseOpeningOverlay.style.display = 'none';
-                    elements.caseOpeningOverlay.classList.remove('active');
-                    isRouletteActive = false;
-                }, 500);
-            }
-        });
     }
     
     if (elements.openCaseBtn) {
@@ -880,32 +915,25 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.modal-overlay').forEach(overlay => {
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay && !isOpening) {
-                if (overlay === elements.caseOpeningOverlay && isRouletteActive) {
+                if (overlay === elements.caseModal && isRouletteActive) {
+                    // Для модального окна кейса с активной рулеткой
+                    if (confirm('Рулетка все еще активна. Вы уверены, что хотите отменить открытие?')) {
+                        isRouletteActive = false;
+                        hideModal(elements.caseModal);
+                        showCasePreview();
+                    }
                     return;
                 }
                 hideModal(overlay);
+                if (overlay === elements.caseModal) {
+                    showCasePreview(); // Возвращаем превью кейса
+                }
             }
         });
     });
     
     console.log('Все обработчики настроены');
-});
-
-// Добавление тестовых предметов (кнопка для разработки)
-document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.key === 't') {
-        addTestItems();
-    }
-});
-
-// Добавление алмазов (кнопка для разработки)
-document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.key === 'b') {
-        userData.balance += 1000;
-        updateUI();
-        alert('+1000 алмазов!');
-    }
-});
+}
 
 // Обработка сообщений от Telegram бота
 if (tg) {
@@ -922,3 +950,28 @@ if (tg) {
         }
     });
 }
+
+// Инициализация при загрузке DOM
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM загружен, запускаем приложение...');
+    
+    // Инициализация приложения
+    initApp();
+    
+    // Настройка обработчиков событий
+    initEventListeners();
+    
+    // Добавление тестовых предметов (кнопка для разработки)
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 't') {
+            addTestItems();
+        }
+        if (e.ctrlKey && e.key === 'b') {
+            userData.balance += 1000;
+            updateUI();
+            alert('+1000 алмазов!');
+        }
+    });
+    
+    console.log('Приложение запущено');
+});
