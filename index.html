@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Case Opening</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <!-- Шапка -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">⛏️</span>
+                <h1>Minecraft Cases</h1>
+            </div>
+            <div class="user-info">
+                <div class="balance">
+                    <span class="balance-icon">💎</span>
+                    <span id="user-balance">1000</span>
+                </div>
+                <button class="btn-inventory" id="inventory-btn">🎒</button>
+            </div>
+        </header>
+
+        <!-- Основной контент -->
+        <main class="main-content">
+            <section class="cases-grid" id="cases-grid">
+                <!-- Кейсы будут добавлены через JS -->
+            </section>
+        </main>
+
+        <!-- Модальное окно открытия кейса -->
+        <div class="modal-overlay" id="case-modal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2 id="case-name">Minecraft Кейс</h2>
+                    <button class="close-modal" id="close-modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="case-3d-container">
+                        <div class="case-spinner" id="case-spinner">
+                            <div class="spinning-wheel">
+                                <div class="wheel-item active" data-index="0">💎</div>
+                                <div class="wheel-item" data-index="1">🍎</div>
+                                <div class="wheel-item" data-index="2">⚔️</div>
+                                <div class="wheel-item" data-index="3">🛡️</div>
+                                <div class="wheel-item" data-index="4">🏹</div>
+                                <div class="wheel-item" data-index="5">🔱</div>
+                                <div class="wheel-item" data-index="6">🌟</div>
+                                <div class="wheel-item" data-index="7">👑</div>
+                            </div>
+                            <div class="spinner-pointer">▼</div>
+                        </div>
+                    </div>
+                    <div class="case-info">
+                        <p class="case-price">Цена: <span id="case-price-value">100</span> 💎</p>
+                        <button class="btn-open-case" id="open-case-btn">
+                            ⛏️ Открыть за <span id="open-price">100</span> 💎
+                        </button>
+                        <p class="case-description" id="case-description"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно инвентаря -->
+        <div class="modal-overlay" id="inventory-modal">
+            <div class="modal inventory-modal">
+                <div class="modal-header">
+                    <h2>🎒 Инвентарь</h2>
+                    <button class="close-modal" id="close-inventory">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="inventory-grid" id="inventory-grid">
+                        <!-- Предметы будут добавлены через JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно результата -->
+        <div class="modal-overlay" id="result-modal">
+            <div class="modal result-modal">
+                <div class="result-header">
+                    <h2>🎉 Поздравляем!</h2>
+                </div>
+                <div class="result-body">
+                    <div class="result-item-display">
+                        <div class="result-icon" id="result-icon">💎</div>
+                        <div class="particle-effect"></div>
+                    </div>
+                    <div class="result-info">
+                        <h3 id="result-item-name">Алмаз</h3>
+                        <p class="item-rarity" id="result-item-rarity">Обычный</p>
+                        <p class="item-price">💎 Цена: <span id="result-item-price">50</span></p>
+                        <div class="result-stats">
+                            <p>Новый баланс: <span id="new-balance">900</span> 💎</p>
+                        </div>
+                        <button class="btn-close-result" id="close-result">Продолжить</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Экран загрузки -->
+        <div class="loading-overlay" id="loading">
+            <div class="loading-spinner"></div>
+            <p>Загрузка...</p>
+        </div>
+
+        <!-- Фоновые элементы Minecraft -->
+        <div class="mc-background">
+            <div class="grass-block"></div>
+            <div class="dirt-block"></div>
+            <div class="stone-block"></div>
+            <div class="diamond-ore"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
