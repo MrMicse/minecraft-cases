@@ -6,8 +6,6 @@
     <title>Minecraft Case Opening</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.min.js"></script>
 </head>
 <body>
     <div class="app-container">
@@ -42,18 +40,8 @@
                 </div>
                 <div class="modal-body">
                     <div class="case-3d-container">
-                        <div class="case-spinner" id="case-spinner">
-                            <div class="spinning-wheel">
-                                <div class="wheel-item active" data-index="0">💎</div>
-                                <div class="wheel-item" data-index="1">🍎</div>
-                                <div class="wheel-item" data-index="2">⚔️</div>
-                                <div class="wheel-item" data-index="3">🛡️</div>
-                                <div class="wheel-item" data-index="4">🏹</div>
-                                <div class="wheel-item" data-index="5">🔱</div>
-                                <div class="wheel-item" data-index="6">🌟</div>
-                                <div class="wheel-item" data-index="7">👑</div>
-                            </div>
-                            <div class="spinner-pointer">▼</div>
+                        <div class="case-preview">
+                            <div class="case-preview-icon" id="case-preview-icon">🎁</div>
                         </div>
                     </div>
                     <div class="case-info">
@@ -62,6 +50,9 @@
                             ⛏️ Открыть за <span id="open-price">100</span> 💎
                         </button>
                         <p class="case-description" id="case-description"></p>
+                        <div class="case-items-preview-modal">
+                            <!-- Предметы для предпросмотра -->
+                        </div>
                     </div>
                 </div>
             </div>
@@ -90,18 +81,42 @@
                 </div>
                 <div class="result-body">
                     <div class="result-item-display">
-                        <div class="result-icon" id="result-icon">💎</div>
+                        <div class="result-item-icon" id="result-icon">💎</div>
                         <div class="particle-effect"></div>
                     </div>
                     <div class="result-info">
                         <h3 id="result-item-name">Алмаз</h3>
-                        <p class="item-rarity" id="result-item-rarity">Обычный</p>
+                        <div class="item-rarity common" id="result-item-rarity">Обычный</div>
                         <p class="item-price">💎 Цена: <span id="result-item-price">50</span></p>
                         <div class="result-stats">
                             <p>Новый баланс: <span id="new-balance">900</span> 💎</p>
                         </div>
                         <button class="btn-close-result" id="close-result">Продолжить</button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Экран открытия кейса с рулеткой -->
+        <div class="case-opening-overlay" id="case-opening-overlay">
+            <div class="roulette-container">
+                <div class="roulette-header">
+                    <h2>Открытие кейса</h2>
+                    <button class="close-roulette" id="close-roulette">&times;</button>
+                </div>
+                
+                <div class="roulette-wheel">
+                    <div class="center-indicator">
+                        <div class="indicator-arrow">▼</div>
+                        <div class="indicator-line"></div>
+                    </div>
+                    
+                    <div class="items-track" id="items-track">
+                        <!-- Предметы будут добавлены через JS -->
+                    </div>
+                    
+                    <!-- Статус открытия -->
+                    <div class="opening-status" id="opening-status">Подготовка...</div>
                 </div>
             </div>
         </div>

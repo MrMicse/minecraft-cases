@@ -1,3 +1,4 @@
+
 // Инициализация Telegram Web App
 const tg = window.Telegram?.WebApp;
 if (tg) {
@@ -15,53 +16,32 @@ let casesData = [];
 let inventoryData = [];
 let currentCase = null;
 let currentItem = null;
-let isSpinning = false;
-let spinAnimation = null;
+let isOpening = false;
 
-// Minecraft предметы по категориям
-const minecraftItems = {
-    common: [
-        { name: "Железный Слиток", icon: "⛓️", price: 50, description: "Базовый ресурс для крафта" },
-        { name: "Уголь", icon: "⚫", price: 30, description: "Топливо и краситель" },
-        { name: "Яблоко", icon: "🍎", price: 40, description: "Восстанавливает голод" },
-        { name: "Хлеб", icon: "🍞", price: 45, description: "Хорошая еда" },
-        { name: "Золотой Слиток", icon: "🟨", price: 80, description: "Редкий ресурс" }
-    ],
-    uncommon: [
-        { name: "Алмаз", icon: "💎", price: 150, description: "Ценный минерал" },
-        { name: "Изумруд", icon: "🟩", price: 200, description: "Торговая валюта" },
-        { name: "Железная Кираса", icon: "🛡️", price: 180, description: "Защита от урона" },
-        { name: "Алмазный Меч", icon: "⚔️", price: 250, description: "Мощное оружие" },
-        { name: "Лук", icon: "🏹", price: 120, description: "Дальнобойное оружие" }
-    ],
-    rare: [
-        { name: "Незеритовый Слиток", icon: "🔱", price: 500, description: "Элитный материал" },
-        { name: "Кирокрыло", icon: "🪶", price: 600, description: "Мгновенное перемещение" },
-        { name: "Элитра", icon: "🧥", price: 800, description: "Полеты в мире" },
-        { name: "Золотое Яблоко", icon: "🍏", price: 400, description: "Особое зелье" }
-    ],
-    epic: [
-        { name: "Тотем Бессмертия", icon: "🐦", price: 1000, description: "Спасение от смерти" },
-        { name: "Сердце Моря", icon: "💙", price: 1200, description: "Редкая реликвия" },
-        { name: "Голова Дракона", icon: "🐲", price: 1500, description: "Трофей дракона" }
-    ],
-    legendary: [
-        { name: "Командный Блок", icon: "🟪", price: 5000, description: "Божественный предмет" },
-        { name: "Меч Незера", icon: "🗡️", price: 3000, description: "Легендарное оружие" },
-        { name: "Корона Власти", icon: "👑", price: 10000, description: "Знак абсолютной власти" }
-    ]
-};
+// Переменные для рулетки
+let scrollPosition = 0;
+let targetScroll = 0;
+let isScrolling = false;
+let scrollAnimationId = null;
+let itemWidth = 135;
+let rouletteItems = [];
+let winningItemIndex = 0;
+let animationStartTime = 0;
+let animationDuration = 3500;
+let isRouletteActive = false;
 
 // DOM элементы
 const elements = {
     balance: document.getElementById('user-balance'),
     casesGrid: document.getElementById('cases-grid'),
+    itemsTrack: document.getElementById('items-track'),
     inventoryGrid: document.getElementById('inventory-grid'),
     
     // Модальные окна
     caseModal: document.getElementById('case-modal'),
     inventoryModal: document.getElementById('inventory-modal'),
     resultModal: document.getElementById('result-modal'),
+    caseOpeningOverlay: document.getElementById('case-opening-overlay'),
     loadingOverlay: document.getElementById('loading'),
     
     // Кнопки
@@ -69,7 +49,11 @@ const elements = {
     closeModal: document.getElementById('close-modal'),
     closeInventory: document.getElementById('close-inventory'),
     closeResult: document.getElementById('close-result'),
+    closeRoulette: document.getElementById('close-roulette'),
     openCaseBtn: document.getElementById('open-case-btn'),
+    
+    // Элементы рулетки
+    openingStatus: document.getElementById('opening-status'),
     
     // Текстовые элементы
     caseName: document.getElementById('case-name'),
@@ -79,17 +63,61 @@ const elements = {
     resultItemName: document.getElementById('result-item-name'),
     resultItemRarity: document.getElementById('result-item-rarity'),
     resultItemPrice: document.getElementById('result-item-price'),
-    resultIcon: document.getElementById('result-icon'),
+    resultItemIcon: document.getElementById('result-icon'),
     newBalance: document.getElementById('new-balance'),
-    
-    // Спиннер
-    caseSpinner: document.getElementById('case-spinner'),
-    spinningWheel: document.querySelector('.spinning-wheel'),
-    wheelItems: document.querySelectorAll('.wheel-item')
+};
+
+// Minecraft предметы по категориям
+const minecraftItems = {
+    common: [
+        { name: "Железный Слиток", icon: "⛓️", price: 50, description: "Базовый ресурс для крафта" },
+        { name: "Уголь", icon: "⚫", price: 30, description: "Топливо и краситель" },
+        { name: "Яблоко", icon: "🍎", price: 40, description: "Восстанавливает голод" },
+        { name: "Хлеб", icon: "🍞", price: 45, description: "Хорошая еда" },
+        { name: "Золотой Слиток", icon: "🟨", price: 80, description: "Редкий ресурс" },
+        { name: "Дубовые Доски", icon: "🪵", price: 20, description: "Строительный материал" },
+        { name: "Камень", icon: "🪨", price: 25, description: "Прочный блок" },
+        { name: "Палка", icon: "〰️", price: 10, description: "Для крафта инструментов" }
+    ],
+    uncommon: [
+        { name: "Алмаз", icon: "💎", price: 150, description: "Ценный минерал" },
+        { name: "Изумруд", icon: "🟩", price: 200, description: "Торговая валюта" },
+        { name: "Железная Кираса", icon: "🛡️", price: 180, description: "Защита от урона" },
+        { name: "Алмазный Меч", icon: "⚔️", price: 250, description: "Мощное оружие" },
+        { name: "Лук", icon: "🏹", price: 120, description: "Дальнобойное оружие" },
+        { name: "Алмазная Кирка", icon: "⛏️", price: 220, description: "Быстрая добыча" },
+        { name: "Золотое Яблоко", icon: "🍏", price: 160, description: "Мощное лечение" },
+        { name: "Око Эндера", icon: "👁️", price: 300, description: "Для поиска крепости" }
+    ],
+    rare: [
+        { name: "Незеритовый Слиток", icon: "🔱", price: 500, description: "Элитный материал" },
+        { name: "Кирокрыло", icon: "🪶", price: 600, description: "Мгновенное перемещение" },
+        { name: "Элитра", icon: "🧥", price: 800, description: "Полеты в мире" },
+        { name: "Золотое Яблоко", icon: "🍏", price: 400, description: "Особое зелье" },
+        { name: "Зачарованная Книга", icon: "📚", price: 350, description: "Мощные чары" },
+        { name: "Плащ Невидимости", icon: "👻", price: 700, description: "Стать невидимым" },
+        { name: "Бесконечный Лук", icon: "🏹", price: 450, description: "Не требует стрел" }
+    ],
+    epic: [
+        { name: "Тотем Бессмертия", icon: "🐦", price: 1000, description: "Спасение от смерти" },
+        { name: "Сердце Моря", icon: "💙", price: 1200, description: "Редкая реликвия" },
+        { name: "Голова Дракона", icon: "🐲", price: 1500, description: "Трофей дракона" },
+        { name: "Кристалл Энда", icon: "💎", price: 900, description: "Восстанавливает дракона" },
+        { name: "Драконье Яйцо", icon: "🥚", price: 2000, description: "Уникальный трофей" },
+        { name: "Зачарованный Золотой Меч", icon: "🗡️", price: 1100, description: "Легендарное оружие" }
+    ],
+    legendary: [
+        { name: "Командный Блок", icon: "🟪", price: 5000, description: "Божественный предмет" },
+        { name: "Меч Незера", icon: "🗡️", price: 3000, description: "Легендарное оружие" },
+        { name: "Корона Власти", icon: "👑", price: 10000, description: "Знак абсолютной власти" },
+        { name: "Артефакт Создателя", icon: "⭐", price: 7500, description: "Сила творения" },
+        { name: "Сфера Бессмертия", icon: "🔮", price: 6000, description: "Вечная жизнь" }
+    ]
 };
 
 // Инициализация приложения
 async function initApp() {
+    console.log('Инициализация приложения...');
     showLoading();
     
     // Создаем кейсы
@@ -100,7 +128,6 @@ async function initApp() {
             price: 100,
             icon: '🍎',
             description: 'Содержит разнообразную еду и напитки',
-            contents: [...minecraftItems.common.slice(2, 5), ...minecraftItems.uncommon.slice(0, 2)],
             rarityWeights: { common: 60, uncommon: 40 }
         },
         {
@@ -109,7 +136,6 @@ async function initApp() {
             price: 250,
             icon: '⛏️',
             description: 'Руды, минералы и базовые ресурсы',
-            contents: [...minecraftItems.common.slice(0, 3), ...minecraftItems.uncommon.slice(0, 3)],
             rarityWeights: { common: 40, uncommon: 50, rare: 10 }
         },
         {
@@ -118,7 +144,6 @@ async function initApp() {
             price: 500,
             icon: '⚔️',
             description: 'Оружие, броня и инструменты',
-            contents: [...minecraftItems.uncommon.slice(2, 5), ...minecraftItems.rare.slice(0, 3)],
             rarityWeights: { uncommon: 30, rare: 50, epic: 20 }
         },
         {
@@ -127,7 +152,6 @@ async function initApp() {
             price: 1000,
             icon: '🌟',
             description: 'Уникальные и легендарные предметы',
-            contents: [...minecraftItems.epic, ...minecraftItems.legendary],
             rarityWeights: { rare: 20, epic: 50, legendary: 30 }
         },
         {
@@ -136,12 +160,6 @@ async function initApp() {
             price: 5000,
             icon: '👑',
             description: 'Эксклюзивные донат предметы',
-            contents: [...minecraftItems.legendary, {
-                name: "Особый Доступ",
-                icon: "🔓",
-                price: 20000,
-                description: "VIP доступ на сервер"
-            }],
             rarityWeights: { epic: 30, legendary: 70 }
         },
         {
@@ -150,47 +168,76 @@ async function initApp() {
             price: 750,
             icon: '🧰',
             description: 'Микс из всех категорий',
-            contents: [
-                ...minecraftItems.common,
-                ...minecraftItems.uncommon,
-                ...minecraftItems.rare.slice(0, 2),
-                ...minecraftItems.epic.slice(0, 1)
-            ],
             rarityWeights: { common: 30, uncommon: 40, rare: 20, epic: 10 }
         }
     ];
     
-    updateUI();
-    setTimeout(hideLoading, 1500);
+    // Загружаем сохраненные данные
+    loadUserData();
     
-    // Инициализируем события спиннера
-    initSpinner();
+    updateUI();
+    
+    setTimeout(() => {
+        hideLoading();
+        console.log('Приложение загружено!');
+    }, 1000);
+}
+
+// Загрузка данных пользователя
+function loadUserData() {
+    try {
+        const savedData = localStorage.getItem('minecraft_case_opening_data');
+        if (savedData) {
+            const data = JSON.parse(savedData);
+            userData.balance = data.balance || 1000;
+            inventoryData = data.inventory || [];
+            console.log('Данные загружены:', userData);
+        } else {
+            console.log('Сохраненных данных нет, используем значения по умолчанию');
+        }
+    } catch (error) {
+        console.log('Ошибка загрузки данных:', error);
+    }
+}
+
+// Сохранение данных пользователя
+function saveUserData() {
+    const data = {
+        balance: userData.balance,
+        inventory: inventoryData
+    };
+    localStorage.setItem('minecraft_case_opening_data', JSON.stringify(data));
+    console.log('Данные сохранены:', data);
 }
 
 // Обновление интерфейса
 function updateUI() {
-    // Обновляем баланс
-    elements.balance.textContent = userData.balance;
-    
-    // Отрисовываем кейсы
+    elements.balance.textContent = userData.balance.toLocaleString();
     renderCases();
-    
-    // Отрисовываем инвентарь
     renderInventory();
+    saveUserData();
 }
 
-// Отрисовка кейсов
+// Отрисовка кейсов с превью предметов
 function renderCases() {
+    console.log('Отрисовка кейсов...');
     elements.casesGrid.innerHTML = '';
     
-    casesData.forEach(caseItem => {
+    casesData.forEach((caseItem, index) => {
         const caseCard = document.createElement('div');
         caseCard.className = 'case-card';
         caseCard.dataset.id = caseItem.id;
+        caseCard.style.setProperty('--index', index);
+        
+        // Собираем примеры предметов для превью
+        const previewItems = getPreviewItems(caseItem);
         
         caseCard.innerHTML = `
             <div class="case-image">
                 <div class="case-icon">${caseItem.icon}</div>
+                <div class="case-items-preview">
+                    ${previewItems.map(item => `<span>${item.icon}</span>`).join('')}
+                </div>
             </div>
             <div class="case-info">
                 <h3 class="case-name">${caseItem.name}</h3>
@@ -202,22 +249,52 @@ function renderCases() {
         caseCard.addEventListener('click', () => openCaseModal(caseItem));
         elements.casesGrid.appendChild(caseCard);
     });
+    
+    console.log('Кейсы отрисованы:', casesData.length);
+}
+
+// Получение предметов для превью кейса
+function getPreviewItems(caseItem) {
+    const previewItems = [];
+    const allItems = [];
+    
+    // Собираем все возможные предметы для этого кейса
+    for (const [rarity, weight] of Object.entries(caseItem.rarityWeights)) {
+        if (weight > 0) {
+            const items = minecraftItems[rarity] || [];
+            allItems.push(...items);
+        }
+    }
+    
+    // Выбираем 3-5 случайных предметов для превью
+    const count = Math.min(4, allItems.length);
+    const shuffledItems = [...allItems].sort(() => Math.random() - 0.5);
+    
+    for (let i = 0; i < count; i++) {
+        if (shuffledItems[i]) {
+            previewItems.push(shuffledItems[i]);
+        }
+    }
+    
+    return previewItems;
 }
 
 // Отрисовка инвентаря
 function renderInventory() {
+    console.log('Отрисовка инвентаря...');
     elements.inventoryGrid.innerHTML = '';
     
     if (inventoryData.length === 0) {
         elements.inventoryGrid.innerHTML = `
             <div style="grid-column: 1/-1; text-align: center; padding: 40px;">
-                <div style="font-size: 3rem; margin-bottom: 20px;">🎒</div>
-                <p style="color: var(--text-secondary);">Инвентарь пуст</p>
+                <div style="font-size: 3rem; margin-bottom: 20px; animation: float 3s infinite ease-in-out;">🎒</div>
+                <p style="color: var(--text-secondary); font-size: 1.1rem; margin-bottom: 10px;">Инвентарь пуст</p>
                 <p style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 10px;">
                     Откройте кейсы, чтобы получить предметы!
                 </p>
             </div>
         `;
+        console.log('Инвентарь пуст');
         return;
     }
     
@@ -238,28 +315,13 @@ function renderInventory() {
         itemElement.addEventListener('click', () => viewItem(item));
         elements.inventoryGrid.appendChild(itemElement);
     });
-}
-
-// Инициализация спиннера
-function initSpinner() {
-    // Наполняем спиннер случайными предметами
-    const allItems = [
-        ...minecraftItems.common,
-        ...minecraftItems.uncommon,
-        ...minecraftItems.rare,
-        ...minecraftItems.epic,
-        ...minecraftItems.legendary
-    ];
     
-    elements.wheelItems.forEach((item, index) => {
-        const randomItem = allItems[Math.floor(Math.random() * allItems.length)];
-        item.innerHTML = randomItem.icon;
-        item.dataset.item = JSON.stringify(randomItem);
-    });
+    console.log('Инвентарь отрисован:', inventoryData.length, 'предметов');
 }
 
-// Открытие модального окна кейса
+// Открытие модального окна кейса с предпросмотром предметов
 function openCaseModal(caseItem) {
+    console.log('Открытие модального окна кейса:', caseItem.name);
     currentCase = caseItem;
     
     elements.caseName.textContent = caseItem.name;
@@ -276,28 +338,52 @@ function openCaseModal(caseItem) {
         elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${caseItem.price} 💎`;
     }
     
-    showModal(elements.caseModal);
+    // Создаем предпросмотр предметов
+    createCaseItemsPreview(caseItem);
     
-    // Сбрасываем спиннер
-    resetSpinner();
+    showModal(elements.caseModal);
 }
 
-// Сброс спиннера
-function resetSpinner() {
-    elements.spinningWheel.style.transition = 'none';
-    elements.spinningWheel.style.transform = 'translate(-50%, -50%) rotate(0deg)';
+// Создание превью предметов в модальном окне
+function createCaseItemsPreview(caseItem) {
+    const previewContainer = document.querySelector('.case-items-preview-modal');
+    if (!previewContainer) return;
     
-    elements.wheelItems.forEach(item => {
-        item.classList.remove('active');
-    });
+    // Очищаем контейнер
+    previewContainer.innerHTML = '';
     
-    if (elements.wheelItems[0]) {
-        elements.wheelItems[0].classList.add('active');
+    // Собираем все предметы для этого кейса
+    const allItems = [];
+    for (const [rarity, weight] of Object.entries(caseItem.rarityWeights)) {
+        if (weight > 0 && minecraftItems[rarity]) {
+            const items = minecraftItems[rarity].map(item => ({
+                ...item,
+                rarity: rarity
+            }));
+            allItems.push(...items);
+        }
     }
+    
+    // Выбираем 6 случайных предметов для превью
+    const previewCount = Math.min(6, allItems.length);
+    const shuffledItems = [...allItems].sort(() => Math.random() - 0.5);
+    const previewItems = shuffledItems.slice(0, previewCount);
+    
+    // Добавляем предметы в превью
+    previewItems.forEach(item => {
+        const previewItem = document.createElement('div');
+        previewItem.className = 'preview-item';
+        previewItem.innerHTML = `
+            <div class="preview-item-icon">${item.icon}</div>
+            <div class="preview-item-name">${item.name}</div>
+        `;
+        previewContainer.appendChild(previewItem);
+    });
 }
 
 // Открытие модального окна инвентаря
 function openInventoryModal() {
+    console.log('Открытие инвентаря');
     renderInventory();
     showModal(elements.inventoryModal);
 }
@@ -309,42 +395,30 @@ function viewItem(item) {
 
 // Открытие кейса
 async function openCase() {
-    if (!currentCase || !userData || isSpinning) return;
+    console.log('Открытие кейса...');
+    if (!currentCase || !userData || isOpening) {
+        console.log('Не могу открыть кейс:', { currentCase, userData, isOpening });
+        return;
+    }
     
     if (userData.balance < currentCase.price) {
         alert('❌ Недостаточно алмазов!');
         return;
     }
     
-    isSpinning = true;
-    elements.openCaseBtn.disabled = true;
-    elements.openCaseBtn.innerHTML = '🎰 Крутится...';
+    console.log('Списываем средства...');
+    // Списание средств
+    userData.balance -= currentCase.price;
+    elements.balance.textContent = userData.balance.toLocaleString();
     
     // Генерируем выигрышный предмет
     const wonItem = generateWonItem(currentCase);
     currentItem = wonItem;
+    console.log('Выигрышный предмет:', wonItem);
     
-    // Запускаем анимацию спиннера
-    await spinWheelAnimation(wonItem);
-    
-    // Списание средств
-    userData.balance -= currentCase.price;
-    elements.balance.textContent = userData.balance;
-    
-    // Добавляем предмет в инвентарь
-    inventoryData.unshift({
-        ...wonItem,
-        obtained_at: new Date().toISOString()
-    });
-    
-    // Показываем результат
-    setTimeout(() => {
-        showResult(wonItem);
-        isSpinning = false;
-    }, 500);
-    
-    // Закрываем модальное окно кейса
-    setTimeout(() => hideModal(elements.caseModal), 1000);
+    // Показываем рулетку
+    hideModal(elements.caseModal);
+    await showRouletteAnimation(wonItem);
 }
 
 // Генерация выигрышного предмета
@@ -377,67 +451,284 @@ function generateWonItem(caseItem) {
     return randomItem;
 }
 
-// Анимация прокрутки спиннера
-function spinWheelAnimation(wonItem) {
+// Показ рулетки с анимацией
+function showRouletteAnimation(wonItem) {
+    console.log('Запуск рулетки с предметом:', wonItem);
     return new Promise((resolve) => {
-        const spinDuration = 3000; // 3 секунды
-        const spinCycles = 5; // 5 полных оборотов
-        const totalRotation = 360 * spinCycles;
-        const winningPosition = Math.floor(Math.random() * 8) * 45; // 8 позиций по 45 градусов
+        isOpening = true;
+        isRouletteActive = true;
         
-        elements.spinningWheel.style.transition = `transform ${spinDuration}ms cubic-bezier(0.1, 0.7, 0.1, 1)`;
-        elements.spinningWheel.style.transform = `translate(-50%, -50%) rotate(${totalRotation + winningPosition}deg)`;
-        
-        // Анимация выбора активного элемента
-        let currentActive = 0;
-        const interval = setInterval(() => {
-            elements.wheelItems.forEach(item => item.classList.remove('active'));
-            currentActive = (currentActive + 1) % 8;
-            elements.wheelItems[currentActive].classList.add('active');
-        }, 100);
-        
+        // Показываем оверлей рулетки
+        elements.caseOpeningOverlay.style.display = 'flex';
         setTimeout(() => {
-            clearInterval(interval);
+            elements.caseOpeningOverlay.style.opacity = '1';
+            elements.caseOpeningOverlay.classList.add('active');
+        }, 10);
+        
+        // Обновляем статус
+        elements.openingStatus.textContent = "Запуск рулетки...";
+        
+        // Генерируем последовательность предметов
+        rouletteItems = generateRouletteSequence(wonItem);
+        console.log('Сгенерирована последовательность:', rouletteItems.length, 'предметов');
+        
+        // Находим индекс выигрышного предмета в последовательности
+        winningItemIndex = rouletteItems.length - 3; // Помещаем ближе к концу
+        
+        // Отрисовываем предметы
+        renderRouletteItems();
+        
+        // Ждем немного перед запуском анимации
+        setTimeout(() => {
+            // Запускаем анимацию
+            startRouletteAnimation(resolve);
+        }, 500);
+    });
+}
+
+// Генерация последовательности предметов для рулетки
+function generateRouletteSequence(wonItem) {
+    const sequence = [];
+    const sequenceLength = 30;
+    
+    // Добавляем случайные предметы
+    for (let i = 0; i < sequenceLength - 5; i++) {
+        const rarities = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
+        const randomRarity = rarities[Math.floor(Math.random() * rarities.length)];
+        const items = minecraftItems[randomRarity] || minecraftItems.common;
+        const randomItem = {...items[Math.floor(Math.random() * items.length)]};
+        randomItem.rarity = randomRarity;
+        sequence.push(randomItem);
+    }
+    
+    // Добавляем выигрышный предмет несколько раз подряд в конце
+    for (let i = 0; i < 5; i++) {
+        sequence.push({...wonItem});
+    }
+    
+    return sequence;
+}
+
+// Отрисовка предметов в рулетке
+function renderRouletteItems() {
+    console.log('Отрисовка рулетки...');
+    elements.itemsTrack.innerHTML = '';
+    
+    rouletteItems.forEach((item, index) => {
+        const rouletteItem = document.createElement('div');
+        rouletteItem.className = `roulette-item ${item.rarity}`;
+        if (index >= rouletteItems.length - 5) {
+            rouletteItem.classList.add('winning-item');
+        }
+        
+        rouletteItem.innerHTML = `
+            <div class="roulette-item-icon">${item.icon}</div>
+            <div class="roulette-item-name">${item.name}</div>
+            <div class="roulette-item-rarity ${item.rarity}">${getRarityText(item.rarity)}</div>
+        `;
+        
+        elements.itemsTrack.appendChild(rouletteItem);
+    });
+    
+    console.log('Рулетка отрисована:', rouletteItems.length, 'предметов');
+}
+
+// Запуск анимации рулетки
+function startRouletteAnimation(resolve) {
+    console.log('Запуск анимации рулетки');
+    scrollPosition = 0;
+    targetScroll = 0;
+    isScrolling = true;
+    
+    const rouletteWheel = document.querySelector('.roulette-wheel');
+    const containerWidth = rouletteWheel.clientWidth;
+    const trackWidth = itemWidth * rouletteItems.length;
+    const centerOffset = (containerWidth - itemWidth) / 2;
+    
+    // Рассчитываем конечную позицию (выигрышный предмет в центре)
+    targetScroll = -(winningItemIndex * itemWidth) + centerOffset;
+    
+    // Ограничиваем скролл
+    const maxScroll = trackWidth - containerWidth + centerOffset;
+    targetScroll = Math.max(-maxScroll, Math.min(targetScroll, centerOffset));
+    
+    // Запоминаем время начала анимации
+    animationStartTime = Date.now();
+    
+    // Запускаем анимацию
+    animateRoulette(resolve);
+}
+
+// Анимация рулетки
+function animateRoulette(resolve) {
+    if (!isRouletteActive) return;
+    
+    const elapsed = Date.now() - animationStartTime;
+    let progress = Math.min(elapsed / animationDuration, 1);
+    
+    // Обновляем статус
+    if (progress < 0.3) {
+        elements.openingStatus.textContent = "Рулетка запущена...";
+    } else if (progress < 0.7) {
+        elements.openingStatus.textContent = "Вращение...";
+    } else if (progress < 0.9) {
+        elements.openingStatus.textContent = "Замедление...";
+    } else {
+        elements.openingStatus.textContent = "Почти готово!";
+    }
+    
+    // Кривая замедления для плавного старта и остановки
+    let easeProgress;
+    if (progress < 0.8) {
+        // Быстрое вращение (линейное)
+        easeProgress = progress;
+    } else {
+        // Замедление в конце (кубическая кривая)
+        const slowProgress = (progress - 0.8) / 0.2;
+        easeProgress = 0.8 + (1 - Math.pow(1 - slowProgress, 3)) * 0.2;
+    }
+    
+    // Прокручиваем трек
+    const currentScroll = easeProgress * targetScroll;
+    scrollPosition = currentScroll;
+    elements.itemsTrack.style.transform = `translateX(${scrollPosition}px)`;
+    
+    // Определяем предмет в центре
+    updateHighlightedItem();
+    
+    if (progress < 1) {
+        // Продолжаем анимацию
+        requestAnimationFrame(() => animateRoulette(resolve));
+    } else {
+        // Завершение анимации
+        finishRouletteAnimation(resolve);
+    }
+}
+
+// Обновление подсвеченного предмета
+function updateHighlightedItem() {
+    const container = document.querySelector('.roulette-wheel');
+    const containerRect = container.getBoundingClientRect();
+    const containerCenter = containerRect.left + containerRect.width / 2;
+    
+    const rouletteItems = document.querySelectorAll('.roulette-item');
+    let closestItem = null;
+    let minDistance = Infinity;
+    
+    rouletteItems.forEach((item, index) => {
+        const itemRect = item.getBoundingClientRect();
+        const itemCenter = itemRect.left + itemRect.width / 2;
+        const distance = Math.abs(itemCenter - containerCenter);
+        
+        item.classList.remove('highlighted');
+        
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestItem = { item, index };
+        }
+    });
+    
+    if (closestItem && minDistance < 100) {
+        closestItem.item.classList.add('highlighted');
+    }
+}
+
+// Завершение анимации рулетки
+function finishRouletteAnimation(resolve) {
+    console.log('Завершение анимации рулетки');
+    isScrolling = false;
+    elements.openingStatus.textContent = "Рулетка остановлена! 🎉";
+    
+    // Находим подсвеченный предмет (выигрышный)
+    const highlightedItem = document.querySelector('.roulette-item.highlighted');
+    if (highlightedItem) {
+        console.log('Найден подсвеченный предмет:', highlightedItem);
+        
+        // Добавляем анимацию выигрыша
+        highlightedItem.classList.add('winning-spin');
+        
+        // Находим данные выигрышного предмета
+        const itemName = highlightedItem.querySelector('.roulette-item-name').textContent;
+        const itemIcon = highlightedItem.querySelector('.roulette-item-icon').textContent;
+        
+        // Находим полные данные предмета
+        const allItems = [
+            ...minecraftItems.common,
+            ...minecraftItems.uncommon,
+            ...minecraftItems.rare,
+            ...minecraftItems.epic,
+            ...minecraftItems.legendary
+        ];
+        
+        const wonItemData = allItems.find(item => 
+            item.name === itemName && item.icon === itemIcon
+        );
+        
+        if (wonItemData) {
+            // Добавляем редкость из класса элемента
+            const rarityClass = Array.from(highlightedItem.classList).find(cls => 
+                ['common', 'uncommon', 'rare', 'epic', 'legendary'].includes(cls)
+            );
             
-            // Устанавливаем выигрышный предмет в активную позицию
-            elements.wheelItems.forEach((item, index) => {
-                item.classList.remove('active');
-                if (index === 0) { // После анимации позиция 0 будет выигрышной
-                    item.innerHTML = wonItem.icon;
-                    item.dataset.item = JSON.stringify(wonItem);
-                    item.classList.add('active');
-                }
+            currentItem = {
+                ...wonItemData,
+                rarity: rarityClass || 'common'
+            };
+            
+            console.log('Добавляем предмет в инвентарь:', currentItem);
+            
+            // Добавляем предмет в инвентарь
+            inventoryData.unshift({
+                ...currentItem,
+                obtained_at: new Date().toISOString()
             });
             
-            resolve();
-        }, spinDuration);
-    });
+            saveUserData();
+            
+            // Показываем результат через 1.5 секунды
+            setTimeout(() => {
+                // Скрываем рулетку
+                elements.caseOpeningOverlay.style.opacity = '0';
+                setTimeout(() => {
+                    elements.caseOpeningOverlay.style.display = 'none';
+                    elements.caseOpeningOverlay.classList.remove('active');
+                    
+                    // Показываем результат
+                    showResult(currentItem);
+                    isOpening = false;
+                    isRouletteActive = false;
+                    resolve();
+                }, 500);
+            }, 1500);
+        } else {
+            console.error('Не удалось найти данные предмета:', itemName, itemIcon);
+        }
+    } else {
+        console.error('Не найден подсвеченный предмет');
+    }
 }
 
 // Показ результата
 function showResult(item) {
+    console.log('Показ результата:', item);
     elements.resultItemName.textContent = item.name;
     elements.resultItemRarity.textContent = getRarityText(item.rarity);
     elements.resultItemRarity.className = `item-rarity ${item.rarity}`;
-    elements.resultItemPrice.textContent = item.price;
-    elements.resultIcon.textContent = item.icon;
-    elements.newBalance.textContent = userData.balance;
+    elements.resultItemPrice.textContent = item.price.toLocaleString();
+    elements.resultItemIcon.textContent = item.icon;
+    elements.newBalance.textContent = userData.balance.toLocaleString();
     
-    // Анимация иконки
-    elements.resultIcon.style.animation = 'none';
-    setTimeout(() => {
-        elements.resultIcon.style.animation = 'itemBounce 0.5s infinite alternate';
-    }, 10);
+    // Добавляем эффект частиц
+    createParticles();
     
     showModal(elements.resultModal);
-    
-    // Добавляем частицы
-    createParticles();
 }
 
 // Создание частиц для эффекта
 function createParticles() {
     const particleContainer = document.querySelector('.particle-effect');
+    if (!particleContainer) return;
+    
     particleContainer.innerHTML = '';
     
     const particleColors = {
@@ -452,45 +743,28 @@ function createParticles() {
     
     for (let i = 0; i < 20; i++) {
         const particle = document.createElement('div');
-        particle.style.position = 'absolute';
-        particle.style.width = '10px';
-        particle.style.height = '10px';
-        particle.style.background = color;
-        particle.style.borderRadius = '50%';
-        particle.style.left = '50%';
-        particle.style.top = '50%';
-        particle.style.opacity = '0';
+        particle.className = 'particle';
         
+        const size = 5 + Math.random() * 10;
         const angle = (i / 20) * Math.PI * 2;
         const distance = 50 + Math.random() * 100;
         
-        particle.style.animation = `
-            particleExplode 1s ease-out ${i * 0.05}s forwards
+        particle.style.cssText = `
+            position: absolute;
+            width: ${size}px;
+            height: ${size}px;
+            background: ${color};
+            border-radius: 50%;
+            left: 50%;
+            top: 50%;
+            opacity: 0;
+            animation: particleExplode 1.5s ease-out ${i * 0.05}s forwards;
+            --end-x: ${Math.cos(angle) * distance}px;
+            --end-y: ${Math.sin(angle) * distance}px;
+            filter: drop-shadow(0 0 5px ${color});
         `;
-        
-        particle.style.setProperty('--end-x', `${Math.cos(angle) * distance}px`);
-        particle.style.setProperty('--end-y', `${Math.sin(angle) * distance}px`);
         
         particleContainer.appendChild(particle);
-    }
-    
-    // Добавляем стили для анимации частиц
-    if (!document.getElementById('particle-styles')) {
-        const style = document.createElement('style');
-        style.id = 'particle-styles';
-        style.textContent = `
-            @keyframes particleExplode {
-                0% {
-                    transform: translate(0, 0) scale(0);
-                    opacity: 1;
-                }
-                100% {
-                    transform: translate(var(--end-x), var(--end-y)) scale(1);
-                    opacity: 0;
-                }
-            }
-        `;
-        document.head.appendChild(style);
     }
 }
 
@@ -508,13 +782,23 @@ function getRarityText(rarity) {
 
 // Управление модальными окнами
 function showModal(modal) {
+    if (!modal) {
+        console.error('Модальное окно не найдено');
+        return;
+    }
     modal.classList.add('active');
     document.body.style.overflow = 'hidden';
+    console.log('Показано модальное окно:', modal.id);
 }
 
 function hideModal(modal) {
+    if (!modal) {
+        console.error('Модальное окно не найдено');
+        return;
+    }
     modal.classList.remove('active');
     document.body.style.overflow = 'auto';
+    console.log('Скрыто модальное окно:', modal.id);
 }
 
 function showLoading() {
@@ -531,24 +815,97 @@ function hideLoading() {
     }, 300);
 }
 
-// Обработчики событий
-elements.inventoryBtn.addEventListener('click', openInventoryModal);
-elements.closeModal.addEventListener('click', () => hideModal(elements.caseModal));
-elements.closeInventory.addEventListener('click', () => hideModal(elements.inventoryModal));
-elements.closeResult.addEventListener('click', () => hideModal(elements.resultModal));
-elements.openCaseBtn.addEventListener('click', openCase);
+// Добавление тестовых предметов (для разработки)
+function addTestItems() {
+    console.log('Добавление тестовых предметов...');
+    if (inventoryData.length === 0) {
+        // Добавляем по одному предмету каждой редкости для демонстрации
+        inventoryData = [
+            { ...minecraftItems.common[0], rarity: 'common', obtained_at: new Date().toISOString() },
+            { ...minecraftItems.uncommon[0], rarity: 'uncommon', obtained_at: new Date().toISOString() },
+            { ...minecraftItems.rare[0], rarity: 'rare', obtained_at: new Date().toISOString() },
+            { ...minecraftItems.epic[0], rarity: 'epic', obtained_at: new Date().toISOString() },
+            { ...minecraftItems.legendary[0], rarity: 'legendary', obtained_at: new Date().toISOString() }
+        ];
+        renderInventory();
+        saveUserData();
+        alert('Тестовые предметы добавлены!');
+    }
+}
 
-// Закрытие модальных окон по клику на overlay
-document.querySelectorAll('.modal-overlay').forEach(overlay => {
-    overlay.addEventListener('click', (e) => {
-        if (e.target === overlay && !isSpinning) {
-            hideModal(overlay);
-        }
+// Обработчики событий
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM загружен, настраиваем обработчики...');
+    
+    // Инициализация приложения
+    initApp();
+    
+    // Настройка обработчиков событий
+    if (elements.inventoryBtn) {
+        elements.inventoryBtn.addEventListener('click', openInventoryModal);
+        console.log('Кнопка инвентаря настроена');
+    }
+    
+    if (elements.closeModal) {
+        elements.closeModal.addEventListener('click', () => hideModal(elements.caseModal));
+    }
+    
+    if (elements.closeInventory) {
+        elements.closeInventory.addEventListener('click', () => hideModal(elements.inventoryModal));
+    }
+    
+    if (elements.closeResult) {
+        elements.closeResult.addEventListener('click', () => hideModal(elements.resultModal));
+    }
+    
+    if (elements.closeRoulette) {
+        elements.closeRoulette.addEventListener('click', () => {
+            if (!isOpening) {
+                elements.caseOpeningOverlay.style.opacity = '0';
+                setTimeout(() => {
+                    elements.caseOpeningOverlay.style.display = 'none';
+                    elements.caseOpeningOverlay.classList.remove('active');
+                    isRouletteActive = false;
+                }, 500);
+            }
+        });
+    }
+    
+    if (elements.openCaseBtn) {
+        elements.openCaseBtn.addEventListener('click', openCase);
+        console.log('Кнопка открытия кейса настроена');
+    }
+    
+    // Закрытие модальных окон по клику на overlay
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay && !isOpening) {
+                if (overlay === elements.caseOpeningOverlay && isRouletteActive) {
+                    return;
+                }
+                hideModal(overlay);
+            }
+        });
     });
+    
+    console.log('Все обработчики настроены');
 });
 
-// Инициализация при загрузке
-document.addEventListener('DOMContentLoaded', initApp);
+// Добавление тестовых предметов (кнопка для разработки)
+document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 't') {
+        addTestItems();
+    }
+});
+
+// Добавление алмазов (кнопка для разработки)
+document.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.key === 'b') {
+        userData.balance += 1000;
+        updateUI();
+        alert('+1000 алмазов!');
+    }
+});
 
 // Обработка сообщений от Telegram бота
 if (tg) {
@@ -565,17 +922,3 @@ if (tg) {
         }
     });
 }
-
-// Добавление шрифта Minecraft
-const style = document.createElement('style');
-style.textContent = `
-    @font-face {
-        font-family: 'Minecraft';
-        src: url('https://cdn.jsdelivr.net/npm/minecraft-font@1.0.0/font/minecraft.woff2') format('woff2');
-    }
-    
-    body {
-        font-family: 'Minecraft', 'Segoe UI', sans-serif;
-    }
-`;
-document.head.appendChild(style);
