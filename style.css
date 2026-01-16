@@ -1684,3 +1684,93 @@ p, h1, h2, h3, h4, h5, h6, span, div {
     }
 }
 
+/* Стили для синхронизации */
+.sync-container {
+    margin-top: 20px;
+    padding: 15px;
+    background: var(--card-bg);
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+}
+
+.btn-sync {
+    background: linear-gradient(135deg, #4b69ff, #00d26a);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin: 0 auto;
+}
+
+.btn-sync:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(75, 105, 255, 0.3);
+}
+
+.session-info {
+    position: fixed;
+    bottom: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.7);
+    color: #ccc;
+    padding: 5px 10px;
+    border-radius: 5px;
+    font-size: 0.7rem;
+    z-index: 1000;
+}
+
+/* Стили для уведомлений */
+.sync-notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #4b69ff;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    z-index: 1001;
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Кнопка синхронизации в хедере */
+.header-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.sync-btn-small {
+    background: transparent;
+    border: 1px solid var(--accent-diamond);
+    color: var(--accent-diamond);
+    padding: 5px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.3s ease;
+}
+
+.sync-btn-small:hover {
+    background: var(--accent-diamond);
+    color: white;
+}
