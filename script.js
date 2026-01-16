@@ -3,6 +3,12 @@ const tg = window.Telegram?.WebApp;
 if (tg) {
     tg.expand();
     tg.BackButton?.hide();
+    
+    // Включаем кнопку назад для Telegram Web App
+    tg.BackButton.show();
+    tg.BackButton.onClick(() => {
+        window.history.back();
+    });
 }
 
 // Глобальные переменные
@@ -109,7 +115,7 @@ const minecraftItems = {
     ]
 };
 
-// Плавные easing функции (остаются без изменений)
+// Плавные easing функции
 function easeOutSine(t) {
     return Math.sin(t * Math.PI / 2);
 }
@@ -140,11 +146,11 @@ async function initApp() {
     console.log('Инициализация приложения...');
     showLoading();
     
-    // Загружаем данные через Telegram Bot API
-    await loadUserDataFromTelegram();
-    
-    // Создаем кейсы локально
+    // Создаем кейсы
     createDefaultCases();
+    
+    // Загружаем данные пользователя
+    await loadUserData();
     
     updateUI();
     
@@ -152,90 +158,6 @@ async function initApp() {
         hideLoading();
         console.log('Приложение загружено!');
     }, 1000);
-}
-
-// Загрузка данных через Telegram Bot API
-async function loadUserDataFromTelegram() {
-    try {
-        if (!tg || !tg.initDataUnsafe?.user?.id) {
-            console.log('Telegram WebApp не инициализирован');
-            loadLocalData();
-            return;
-        }
-
-        console.log('Загружаем данные через Telegram Bot API...');
-        
-        // Отправляем запрос на инициализацию через Telegram Bot API
-        const response = await sendTelegramData({
-            action: 'init',
-            userId: tg.initDataUnsafe.user.id
-        });
-
-        if (response && response.success) {
-            userData.balance = response.user.balance || 10000;
-            userData.inventory = response.inventory || [];
-            casesData = response.cases || [];
-            
-            console.log('Данные загружены через Telegram:', userData);
-        } else {
-            console.log('Не удалось загрузить данные через Telegram, используем локальные');
-            loadLocalData();
-        }
-    } catch (error) {
-        console.log('Ошибка загрузки через Telegram:', error);
-        loadLocalData();
-    }
-}
-
-// Отправка данных через Telegram Bot API
-async function sendTelegramData(data) {
-    if (!tg || !tg.initDataUnsafe?.user?.id) {
-        console.log('Telegram WebApp не инициализирован');
-        return null;
-    }
-
-    try {
-        // Отправляем данные через Telegram WebApp
-        tg.sendData(JSON.stringify(data));
-        
-        // Ждем ответа от бота (обработка через onEvent)
-        return new Promise((resolve) => {
-            const timeout = setTimeout(() => {
-                resolve(null);
-            }, 5000);
-            
-            tg.onEvent('webAppDataReceived', (receivedData) => {
-                clearTimeout(timeout);
-                try {
-                    const parsedData = JSON.parse(receivedData);
-                    resolve(parsedData);
-                } catch (e) {
-                    console.error('Ошибка парсинга данных:', e);
-                    resolve(null);
-                }
-            });
-        });
-    } catch (error) {
-        console.error('Ошибка отправки данных:', error);
-        return null;
-    }
-}
-
-// Загрузка локальных данных
-function loadLocalData() {
-    try {
-        const savedData = localStorage.getItem('minecraft_case_opening_data');
-        if (savedData) {
-            const data = JSON.parse(savedData);
-            userData.balance = data.balance || 10000;
-            userData.inventory = data.inventory || [];
-            console.log('Локальные данные загружены:', userData);
-        } else {
-            console.log('Локальных данных нет, используем значения по умолчанию');
-        }
-    } catch (error) {
-        console.log('Ошибка загрузки локальных данных:', error);
-    }
 }
 
 // Создание кейсов по умолчанию
@@ -292,30 +214,118 @@ function createDefaultCases() {
     ];
 }
 
-// Сохранение данных через Telegram Bot API
-async function saveDataToTelegram() {
-    if (!tg || !tg.initDataUnsafe?.user?.id) {
-        console.log('Telegram WebApp не инициализирован, сохраняем локально');
-        saveLocalData();
-        return;
-    }
-
+// Загрузка данных пользователя
+async function loadUserData() {
     try {
-        const response = await sendTelegramData({
+        if (!tg || !tg.initDataUnsafe?.user?.id) {
+            console.log('Telegram WebApp не инициализирован, используем локальные данные');
+            loadLocalData();
+            return;
+        }
+
+        console.log('Загружаем данные пользователя...');
+        
+        // Отправляем запрос на получение данных через Telegram Bot API
+        const dataToSend = {
+            action: 'init',
+            userId: tg.initDataUnsafe.user.id,
+            initData: tg.initData
+        };
+        
+        // Отправляем данные через Telegram WebApp
+        tg.sendData(JSON.stringify(dataToSend));
+        
+        // Ждем ответа от бота
+        const userDataResponse = await waitForBotResponse();
+        
+        if (userDataResponse && userDataResponse.success) {
+            userData.balance = userDataResponse.user.balance || 10000;
+            userData.inventory = userDataResponse.inventory || [];
+            console.log('Данные загружены с сервера:', userData);
+        } else {
+            console.log('Не удалось загрузить данные с сервера, используем локальные');
+            loadLocalData();
+        }
+    } catch (error) {
+        console.log('Ошибка загрузки данных:', error);
+        loadLocalData();
+    }
+}
+
+// Ожидание ответа от бота
+function waitForBotResponse() {
+    return new Promise((resolve) => {
+        if (!tg) {
+            resolve(null);
+            return;
+        }
+        
+        const timeout = setTimeout(() => {
+            console.log('Таймаут ожидания ответа от бота');
+            resolve(null);
+        }, 5000);
+        
+        tg.onEvent('webAppDataReceived', (data) => {
+            clearTimeout(timeout);
+            try {
+                console.log('Получены данные от бота:', data);
+                const parsedData = JSON.parse(data);
+                resolve(parsedData);
+            } catch (e) {
+                console.error('Ошибка парсинга данных от бота:', e);
+                resolve(null);
+            }
+        });
+    });
+}
+
+// Загрузка локальных данных
+function loadLocalData() {
+    try {
+        const savedData = localStorage.getItem('minecraft_case_opening_data');
+        if (savedData) {
+            const data = JSON.parse(savedData);
+            userData.balance = data.balance || 10000;
+            userData.inventory = data.inventory || [];
+            console.log('Локальные данные загружены:', userData);
+        } else {
+            console.log('Локальных данных нет, используем значения по умолчанию');
+            userData.balance = 10000;
+            userData.inventory = [];
+        }
+    } catch (error) {
+        console.log('Ошибка загрузки локальных данных:', error);
+        userData.balance = 10000;
+        userData.inventory = [];
+    }
+}
+
+// Сохранение данных на сервер
+async function saveUserData() {
+    try {
+        if (!tg || !tg.initDataUnsafe?.user?.id) {
+            console.log('Telegram WebApp не инициализирован, сохраняем локально');
+            saveLocalData();
+            return;
+        }
+
+        console.log('Сохранение данных на сервер...');
+        
+        const dataToSend = {
             action: 'save_data',
             userId: tg.initDataUnsafe.user.id,
             balance: userData.balance,
-            inventory: userData.inventory
-        });
-
-        if (response && response.success) {
-            console.log('Данные сохранены через Telegram');
-        } else {
-            console.log('Ошибка сохранения через Telegram, сохраняем локально');
-            saveLocalData();
-        }
+            inventory: userData.inventory,
+            initData: tg.initData
+        };
+        
+        tg.sendData(JSON.stringify(dataToSend));
+        
+        // Также сохраняем локально на случай проблем с соединением
+        saveLocalData();
+        
     } catch (error) {
-        console.log('Ошибка сохранения через Telegram:', error);
+        console.log('Ошибка сохранения на сервер:', error);
         saveLocalData();
     }
 }
@@ -331,16 +341,13 @@ function saveLocalData() {
 }
 
 // Обновление интерфейса
-async function updateUI() {
+function updateUI() {
     elements.balance.textContent = userData.balance.toLocaleString();
     renderCases();
     renderInventory();
-    
-    // Сохраняем данные
-    await saveDataToTelegram();
 }
 
-// Отрисовка кейсов (остается без изменений)
+// Отрисовка кейсов
 function renderCases() {
     console.log('Отрисовка кейсов...');
     elements.casesGrid.innerHTML = '';
@@ -460,56 +467,7 @@ function openCaseModal(caseItem) {
     showModal(elements.caseModal);
 }
 
-// Открытие кейса через Telegram Bot API
-async function openCase() {
-    console.log('Открытие кейса...');
-    if (!currentCase || !userData || isOpening) {
-        console.log('Не могу открыть кейс');
-        return;
-    }
-    
-    if (userData.balance < currentCase.price) {
-        alert('❌ Недостаточно алмазов!');
-        return;
-    }
-    
-    console.log('Списываем средства...');
-    
-    // Отключаем кнопку
-    elements.openCaseBtn.disabled = true;
-    elements.openCaseBtn.innerHTML = '⏳ Открывается...';
-    
-    try {
-        // Отправляем запрос на открытие кейса через Telegram
-        const response = await sendTelegramData({
-            action: 'open_case',
-            case_id: currentCase.id
-        });
-        
-        if (response && response.success) {
-            // Обновляем баланс и инвентарь из ответа
-            userData.balance = response.new_balance;
-            userData.inventory.unshift(response.item);
-            
-            elements.balance.textContent = userData.balance.toLocaleString();
-            currentItem = response.item;
-            
-            // Запускаем рулетку
-            await startRouletteForCase(response.item);
-        } else {
-            alert('❌ Ошибка при открытии кейса');
-            elements.openCaseBtn.disabled = false;
-            elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${currentCase.price} 💎`;
-        }
-    } catch (error) {
-        console.error('Ошибка открытия кейса:', error);
-        alert('❌ Ошибка соединения');
-        elements.openCaseBtn.disabled = false;
-        elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${currentCase.price} 💎`;
-    }
-}
-
-// Остальные функции рулетки (без изменений)
+// Создание превью предметов в модальном окне
 function createCaseItemsPreview(caseItem) {
     const previewContainer = document.querySelector('.case-items-preview-modal');
     if (!previewContainer) return;
@@ -542,6 +500,7 @@ function createCaseItemsPreview(caseItem) {
     });
 }
 
+// Подготовка рулетки для кейса
 function prepareRouletteForCase(caseItem) {
     console.log('Подготовка рулетки для кейса:', caseItem.name);
     
@@ -564,6 +523,7 @@ function prepareRouletteForCase(caseItem) {
     }, 100);
 }
 
+// Генерация начальной последовательности для рулетки
 function generateInitialRouletteSequence(caseItem) {
     const sequence = [];
     const sequenceLength = 15;
@@ -604,6 +564,7 @@ function generateInitialRouletteSequence(caseItem) {
     return sequence;
 }
 
+// Отрисовка предметов в рулетке
 function renderRouletteItems() {
     console.log('Отрисовка рулетки...');
     if (!elements.itemsTrack) return;
@@ -625,7 +586,72 @@ function renderRouletteItems() {
     });
 }
 
-// Функции рулетки (без изменений)
+// Открытие кейса
+async function openCase() {
+    console.log('Открытие кейса...');
+    if (!currentCase || !userData || isOpening) {
+        console.log('Не могу открыть кейс');
+        return;
+    }
+    
+    if (userData.balance < currentCase.price) {
+        alert('❌ Недостаточно алмазов!');
+        return;
+    }
+    
+    console.log('Отправляем запрос на открытие кейса...');
+    
+    elements.openCaseBtn.disabled = true;
+    elements.openCaseBtn.innerHTML = '⏳ Открывается...';
+    
+    try {
+        // Отправляем запрос на открытие кейса
+        const dataToSend = {
+            action: 'open_case',
+            userId: tg.initDataUnsafe.user.id,
+            case_id: currentCase.id,
+            initData: tg.initData
+        };
+        
+        tg.sendData(JSON.stringify(dataToSend));
+        
+        // Ждем ответа от бота
+        const response = await waitForBotResponse();
+        
+        if (response && response.success) {
+            // Обновляем данные из ответа бота
+            userData.balance = response.new_balance;
+            currentItem = response.item;
+            
+            // Добавляем предмет в инвентарь
+            userData.inventory.unshift({
+                ...response.item,
+                obtained_at: new Date().toISOString()
+            });
+            
+            elements.balance.textContent = userData.balance.toLocaleString();
+            
+            console.log('Кейс успешно открыт:', response.item);
+            
+            // Запускаем рулетку с выигрышным предметом
+            await startRouletteForCase(response.item);
+            
+        } else {
+            const errorMsg = response?.error || 'Неизвестная ошибка';
+            alert(`❌ Ошибка при открытии кейса: ${errorMsg}`);
+            elements.openCaseBtn.disabled = false;
+            elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${currentCase.price} 💎`;
+        }
+        
+    } catch (error) {
+        console.error('Ошибка открытия кейса:', error);
+        alert('❌ Ошибка соединения с сервером');
+        elements.openCaseBtn.disabled = false;
+        elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${currentCase.price} 💎`;
+    }
+}
+
+// Запуск рулетки для кейса
 function startRouletteForCase(wonItem) {
     return new Promise((resolve) => {
         isOpening = true;
@@ -645,6 +671,7 @@ function startRouletteForCase(wonItem) {
     });
 }
 
+// Генерация полной последовательности для анимации
 function generateFullRouletteSequence(wonItem) {
     const sequence = [];
     const sequenceLength = 50;
@@ -672,6 +699,7 @@ function generateFullRouletteSequence(wonItem) {
     return sequence;
 }
 
+// Запуск анимации рулетки
 function startRouletteAnimation(resolve) {
     console.log('Запуск анимации рулетки');
     isScrolling = true;
@@ -697,6 +725,7 @@ function startRouletteAnimation(resolve) {
     }, 100);
 }
 
+// Анимация рулетки
 function animateRoulette(startPos, endPos, duration, resolve) {
     if (!isRouletteActive) return;
     
@@ -737,6 +766,7 @@ function animateRoulette(startPos, endPos, duration, resolve) {
     }
 }
 
+// Обновление подсветки предмета в центре
 function updateCenterZoneItem() {
     if (!elements.rouletteContainer || !elements.itemsTrack) return;
     
@@ -766,6 +796,7 @@ function updateCenterZoneItem() {
     }
 }
 
+// Завершение анимации рулетки
 function finishRouletteAnimation(resolve) {
     console.log('Завершение анимации рулетки');
     isScrolling = false;
@@ -784,7 +815,7 @@ function finishRouletteAnimation(resolve) {
                 console.log('Выигрышный предмет:', currentItem);
                 
                 // Сохраняем данные
-                saveDataToTelegram();
+                saveUserData();
                 
                 setTimeout(() => {
                     hideModal(elements.caseModal);
@@ -811,6 +842,7 @@ function finishRouletteAnimation(resolve) {
     }, 500);
 }
 
+// Обработка ошибки рулетки
 function handleRouletteError(resolve) {
     setTimeout(() => {
         hideModal(elements.caseModal);
@@ -829,6 +861,7 @@ function handleRouletteError(resolve) {
     }, 1000);
 }
 
+// Показ результата
 function showResult(item) {
     console.log('Показ результата:', item);
     elements.resultItemName.textContent = item.name;
@@ -842,6 +875,7 @@ function showResult(item) {
     showModal(elements.resultModal);
 }
 
+// Создание частиц для эффекта
 function createParticles() {
     const particleContainer = document.querySelector('.particle-effect');
     if (!particleContainer) return;
@@ -885,6 +919,7 @@ function createParticles() {
     }
 }
 
+// Получение текста редкости
 function getRarityText(rarity) {
     const rarityMap = {
         'common': 'Обычный',
@@ -896,6 +931,7 @@ function getRarityText(rarity) {
     return rarityMap[rarity] || rarity;
 }
 
+// Управление модальными окнами
 function showModal(modal) {
     if (!modal) return;
     modal.classList.add('active');
@@ -934,6 +970,49 @@ function openInventoryModal() {
 
 function viewItem(item) {
     alert(`🎁 ${item.name}\n🎯 Редкость: ${getRarityText(item.rarity)}\n💎 Цена: ${item.price}\n📝 ${item.description}`);
+}
+
+// Синхронизация баланса
+async function syncBalance() {
+    if (!tg || !tg.initDataUnsafe?.user?.id) {
+        console.log('Telegram WebApp не инициализирован');
+        return;
+    }
+    
+    try {
+        console.log('Синхронизация баланса...');
+        
+        const dataToSend = {
+            action: 'sync_balance',
+            userId: tg.initDataUnsafe.user.id,
+            initData: tg.initData
+        };
+        
+        tg.sendData(JSON.stringify(dataToSend));
+        
+        const response = await waitForBotResponse();
+        
+        if (response && response.balance !== undefined) {
+            if (response.balance !== userData.balance) {
+                userData.balance = response.balance;
+                elements.balance.textContent = userData.balance.toLocaleString();
+                console.log('Баланс синхронизирован:', userData.balance);
+                
+                // Обновляем кнопки открытия кейса
+                if (currentCase) {
+                    if (userData.balance >= currentCase.price) {
+                        elements.openCaseBtn.disabled = false;
+                        elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${currentCase.price} 💎`;
+                    } else {
+                        elements.openCaseBtn.disabled = true;
+                        elements.openCaseBtn.innerHTML = '❌ Недостаточно 💎';
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        console.log('Ошибка синхронизации баланса:', error);
+    }
 }
 
 // Инициализация обработчиков событий
@@ -993,28 +1072,6 @@ function initEventListeners() {
     });
 }
 
-// Обновление баланса в реальном времени
-function syncBalance() {
-    if (!tg || !tg.initDataUnsafe?.user?.id) return;
-    
-    setInterval(async () => {
-        try {
-            const response = await sendTelegramData({
-                action: 'sync_balance',
-                userId: tg.initDataUnsafe.user.id
-            });
-            
-            if (response && response.balance !== undefined && response.balance !== userData.balance) {
-                userData.balance = response.balance;
-                elements.balance.textContent = userData.balance.toLocaleString();
-                console.log('Баланс синхронизирован:', userData.balance);
-            }
-        } catch (error) {
-            console.log('Ошибка синхронизации баланса:', error);
-        }
-    }, 30000); // Каждые 30 секунд
-}
-
 // Инициализация при загрузке DOM
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM загружен, запускаем приложение...');
@@ -1022,8 +1079,15 @@ document.addEventListener('DOMContentLoaded', function() {
     initApp();
     initEventListeners();
     
-    // Запускаем синхронизацию баланса
-    syncBalance();
+    // Запускаем периодическую синхронизацию
+    setInterval(() => {
+        syncBalance();
+    }, 30000); // Каждые 30 секунд
+    
+    // Синхронизируем при фокусе окна
+    window.addEventListener('focus', () => {
+        syncBalance();
+    });
     
     console.log('Приложение запущено');
 });

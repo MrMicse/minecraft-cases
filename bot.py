@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import (
     Message, InlineKeyboardMarkup, 
-    InlineKeyboardButton, WebAppInfo, CallbackQuery
+    InlineKeyboardButton, WebAppInfo
 )
 from aiogram.filters import Command, CommandObject
 from aiogram.enums import ParseMode
@@ -121,16 +121,17 @@ def init_db():
     
     # Сброс баланса всех пользователей до 10000
     cursor.execute("UPDATE users SET balance = 10000 WHERE balance != 10000")
+    conn.commit()
     
-    # Добавляем начальные данные
+    # Проверяем и добавляем начальные данные
     cursor.execute("SELECT COUNT(*) FROM items")
     if cursor.fetchone()[0] == 0:
         add_initial_data(cursor)
+        conn.commit()
     
-    conn.commit()
     conn.close()
     print(f"✅ База данных инициализирована: {DB_PATH}")
-    print(f"💰 Баланс всех пользователей установлен на 10000")
+    print(f"💰 Баланс всех пользователей установлен на 10000 💎")
 
 def add_initial_data(cursor):
     """Добавление начальных данных"""
@@ -202,6 +203,7 @@ def get_user(user_id: int) -> Dict:
     
     user_data = cursor.fetchone()
     if not user_data:
+        print(f"👤 Создаем нового пользователя: {user_id}")
         cursor.execute(
             """INSERT INTO users (user_id, balance, experience, level, last_login) 
                VALUES (?, 10000, 0, 1, CURRENT_TIMESTAMP)""",
@@ -256,6 +258,8 @@ def update_balance(user_id: int, amount: int, transaction_type: str, description
     
     conn.commit()
     conn.close()
+    
+    print(f"💰 Баланс пользователя {user_id} обновлен: {amount} ({transaction_type}), новый баланс: {new_balance}")
     
     return new_balance
 
@@ -324,7 +328,7 @@ def open_case(user_id: int, case_id: int) -> Dict:
     
     # Получаем информацию о кейсе
     cursor.execute(
-        "SELECT price, rarity_weights FROM cases WHERE case_id = ?",
+        "SELECT case_id, price, rarity_weights FROM cases WHERE case_id = ?",
         (case_id,)
     )
     case_data = cursor.fetchone()
@@ -333,7 +337,7 @@ def open_case(user_id: int, case_id: int) -> Dict:
         conn.close()
         return {"error": "Кейс не найден"}
     
-    case_price, rarity_weights_json = case_data
+    case_id_db, case_price, rarity_weights_json = case_data
     rarity_weights = json.loads(rarity_weights_json)
     
     # Выбираем редкость
@@ -347,6 +351,8 @@ def open_case(user_id: int, case_id: int) -> Dict:
         if random_value <= cumulative_weight:
             selected_rarity = rarity
             break
+    
+    print(f"🎲 Выбрана редкость: {selected_rarity}")
     
     # Выбираем случайный предмет
     cursor.execute(
@@ -372,7 +378,12 @@ def open_case(user_id: int, case_id: int) -> Dict:
     
     # Проверяем баланс
     cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-    balance = cursor.fetchone()[0]
+    balance_result = cursor.fetchone()
+    if not balance_result:
+        conn.close()
+        return {"error": "Пользователь не найден"}
+    
+    balance = balance_result[0]
     
     if balance < case_price:
         conn.close()
@@ -408,6 +419,8 @@ def open_case(user_id: int, case_id: int) -> Dict:
     conn.commit()
     conn.close()
     
+    print(f"🎁 Пользователь {user_id} открыл кейс {case_id}, получил: {item['name']}")
+    
     return {
         "success": True,
         "item": item,
@@ -416,7 +429,7 @@ def open_case(user_id: int, case_id: int) -> Dict:
         "case_price": case_price
     }
 
-# Основные команды
+# Основные команды бота
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     """Команда /start"""
@@ -441,14 +454,6 @@ async def cmd_start(message: Message):
                     text="⛏️ Открыть Minecraft Кейсы",
                     web_app=WebAppInfo(url="https://mrmicse.github.io/minecraft-cases/")
                 )
-            ],
-            [
-                InlineKeyboardButton(text="👤 Профиль", callback_data="profile"),
-                InlineKeyboardButton(text="🎒 Инвентарь", callback_data="inventory")
-            ],
-            [
-                InlineKeyboardButton(text="💰 Пополнить баланс", callback_data="deposit"),
-                InlineKeyboardButton(text="🔄 Обменять предметы", callback_data="trade")
             ]
         ]
     )
@@ -461,7 +466,8 @@ async def cmd_start(message: Message):
 ⭐ <b>Опыт:</b> {user['experience']} XP
 
 🎁 <b>Ежедневный бонус:</b> 100 💎 (/daily)
-<code>Начни открывать кейсы и собери свою коллекцию!</code>
+
+<code>Нажмите кнопку ниже, чтобы начать открывать кейсы!</code>
     """
     
     await message.answer(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
@@ -534,7 +540,7 @@ async def cmd_balance(message: Message):
 async def cmd_set_balance(message: Message, command: CommandObject):
     """Установка баланса"""
     if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ Нет прав!")
+        await message.answer("⛔ У вас нет прав администратора!")
         return
     
     if not command.args:
@@ -572,7 +578,7 @@ async def cmd_set_balance(message: Message, command: CommandObject):
         await message.answer(f"✅ Баланс пользователя ID: {user_id} установлен на {amount} 💎")
         
     except ValueError:
-        await message.answer("❌ Неверный формат!")
+        await message.answer("❌ Неверный формат аргументов!")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {str(e)}")
 
@@ -580,7 +586,7 @@ async def cmd_set_balance(message: Message, command: CommandObject):
 async def cmd_add_balance(message: Message, command: CommandObject):
     """Добавление баланса"""
     if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ Нет прав!")
+        await message.answer("⛔ У вас нет прав администратора!")
         return
     
     if not command.args:
@@ -604,7 +610,7 @@ async def cmd_add_balance(message: Message, command: CommandObject):
         await message.answer(f"✅ Пользователю ID: {user_id} добавлено {amount} 💎\nНовый баланс: {new_balance} 💎")
         
     except ValueError:
-        await message.answer("❌ Неверный формат!")
+        await message.answer("❌ Неверный формат аргументов!")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {str(e)}")
 
@@ -612,7 +618,7 @@ async def cmd_add_balance(message: Message, command: CommandObject):
 async def cmd_reset_balance(message: Message, command: CommandObject = None):
     """Сброс баланса"""
     if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ Нет прав!")
+        await message.answer("⛔ У вас нет прав администратора!")
         return
     
     try:
@@ -636,7 +642,7 @@ async def cmd_reset_balance(message: Message, command: CommandObject = None):
             cursor.execute(
                 """INSERT INTO transactions (user_id, type, amount, description) 
                    VALUES (?, 'admin', ?, ?)""",
-                (user_id, 10000 - current_balance[0], "Сброс баланса")
+                (user_id, 10000 - current_balance[0], "Сброс баланса администратором")
             )
             
             conn.commit()
@@ -670,7 +676,7 @@ async def cmd_reset_balance(message: Message, command: CommandObject = None):
             await message.answer(f"✅ Баланс всех {user_count} пользователей сброшен до 10000 💎")
             
     except ValueError:
-        await message.answer("❌ Неверный формат!")
+        await message.answer("❌ Неверный формат user_id!")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {str(e)}")
 
@@ -678,7 +684,7 @@ async def cmd_reset_balance(message: Message, command: CommandObject = None):
 async def cmd_admin(message: Message):
     """Админ панель"""
     if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ Нет прав!")
+        await message.answer("⛔ У вас нет прав администратора!")
         return
     
     text = """
@@ -690,25 +696,30 @@ async def cmd_admin(message: Message):
 /resetbalance [user_id] - Сбросить баланс до 10000
 
 <b>Примеры:</b>
-<code>/setbalance 123456789 50000</code>
-<code>/addbalance 123456789 1000</code>
-<code>/resetbalance 123456789</code>
-<code>/resetbalance</code> - сбросить всем
+<code>/setbalance 123456789 50000</code> - Установить баланс 50000
+<code>/addbalance 123456789 1000</code> - Добавить 1000 к балансу
+<code>/resetbalance 123456789</code> - Сбросить баланс пользователя
+<code>/resetbalance</code> - Сбросить баланс всем пользователям
     """
     
     await message.answer(text, parse_mode=ParseMode.HTML)
 
-# Обработка данных из Web App
+# Обработка данных из мини-приложения
 @router.message(F.web_app_data)
 async def handle_web_app_data(message: Message):
     """Обработка данных из мини-приложения"""
     try:
-        print(f"🌐 Данные от {message.from_user.id}")
+        print(f"🌐 Получены данные из Web App от {message.from_user.id}")
+        
+        # Парсим данные
         data = json.loads(message.web_app_data.data)
         user_id = message.from_user.id
+        action = data.get('action')
         
-        if data.get('action') == 'init':
-            # Инициализация
+        print(f"📨 Действие: {action}, данные: {data}")
+        
+        if action == 'init':
+            # Инициализация приложения
             user = get_user(user_id)
             inventory = get_inventory(user_id)
             cases = get_cases()
@@ -720,16 +731,18 @@ async def handle_web_app_data(message: Message):
                 'cases': cases
             }
             
+            print(f"📤 Отправляем данные инициализации пользователю {user_id}")
             await message.answer(json.dumps(response))
             
-        elif data.get('action') == 'open_case':
+        elif action == 'open_case':
             # Открытие кейса
             case_id = data.get('case_id')
-            print(f"🎰 {user_id} открывает кейс {case_id}")
+            print(f"🎰 Пользователь {user_id} открывает кейс {case_id}")
             
             result = open_case(user_id, case_id)
             
             if 'error' in result:
+                print(f"❌ Ошибка при открытии кейса: {result['error']}")
                 await message.answer(json.dumps({'error': result['error']}))
                 return
             
@@ -747,10 +760,11 @@ async def handle_web_app_data(message: Message):
                 """
                 await message.answer(notification, parse_mode=ParseMode.HTML)
             
+            print(f"📤 Отправляем результат открытия кейса пользователю {user_id}")
             await message.answer(json.dumps(result))
             
-        elif data.get('action') == 'save_data':
-            # Сохранение данных
+        elif action == 'save_data':
+            # Сохранение данных (для синхронизации)
             balance = data.get('balance', 10000)
             
             conn = sqlite3.connect(DB_PATH)
@@ -759,36 +773,58 @@ async def handle_web_app_data(message: Message):
             conn.commit()
             conn.close()
             
+            print(f"💾 Сохранены данные пользователя {user_id}: баланс {balance}")
             await message.answer(json.dumps({'success': True}))
             
-        elif data.get('action') == 'sync_balance':
+        elif action == 'sync_balance':
             # Синхронизация баланса
             user = get_user(user_id)
+            print(f"🔄 Синхронизация баланса пользователя {user_id}: {user['balance']} 💎")
             await message.answer(json.dumps({'balance': user['balance']}))
             
+        else:
+            # Неизвестное действие
+            print(f"❓ Неизвестное действие: {action}")
+            await message.answer(json.dumps({'error': 'Неизвестное действие'}))
+            
+    except json.JSONDecodeError as e:
+        print(f"❌ Ошибка парсинга JSON: {e}")
+        await message.answer(json.dumps({'error': 'Неверный формат данных'}))
     except Exception as e:
-        print(f"❌ Ошибка: {e}")
-        await message.answer(json.dumps({'error': 'Ошибка сервера'}))
+        print(f"❌ Ошибка обработки данных: {e}")
+        await message.answer(json.dumps({'error': 'Внутренняя ошибка сервера'}))
 
 @router.message()
 async def handle_unknown(message: Message):
     """Обработка неизвестных сообщений"""
-    await message.answer("🤔 Не понимаю. Используйте /help")
+    await message.answer("🤔 Не понимаю вашу команду. Используйте /start для начала.")
 
 async def main():
-    """Запуск бота"""
+    """Основная функция запуска бота"""
+    # Инициализация базы данных
     init_db()
     
     print("=" * 50)
     print("🎮 Minecraft Case Opening Bot")
+    print(f"🤖 Бот запущен")
+    print(f"👑 Админ ID: {ADMIN_ID}")
     print(f"💰 Начальный баланс: 10000 💎")
-    print("✅ Бот запущен!")
+    print(f"🗄️ База данных: {DB_PATH}")
+    print("=" * 50)
+    print("✅ Бот успешно запущен!")
+    print("⛏️ Ожидание команд...")
     print("=" * 50)
     
     try:
         await dp.start_polling(bot)
     except Exception as e:
-        print(f"❌ Ошибка: {e}")
+        print(f"❌ Ошибка при запуске бота: {e}")
+        raise
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n🛑 Бот остановлен пользователем")
+    except Exception as e:
+        print(f"❌ Ошибка при запуске бота: {e}")
