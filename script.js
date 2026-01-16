@@ -24,8 +24,8 @@ let isScrolling = false;
 let rouletteItems = [];
 let winningItemIndex = 0;
 let animationStartTime = 0;
-let animationDuration = 3800; // Увеличили для большей плавности
 let isRouletteActive = false;
+let animationPhase = 0; // 0: начало, 1: ускорение, 2: максимальная, 3: замедление
 
 // DOM элементы
 const elements = {
@@ -130,6 +130,10 @@ function easeOutCubic(t) {
 
 function easeInOutQuad(t) {
     return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+}
+
+function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
 // Инициализация приложения
@@ -421,39 +425,35 @@ function prepareRouletteForCase(caseItem) {
     // Отрисовываем предметы
     renderRouletteItems();
     
-    // Устанавливаем начальную позицию (первый предмет по центру)
-    const rouletteContainer = elements.rouletteContainer;
-    if (!rouletteContainer || !elements.itemsTrack) return;
-    
     // Даем время на отрисовку
     setTimeout(() => {
-        const containerWidth = rouletteContainer.clientWidth;
-        const itemWidth = 83; // 75px предмет + 8px gap
+        if (!elements.rouletteContainer || !elements.itemsTrack) return;
         
         // Центрируем первый предмет
-        const centerPosition = containerWidth / 2;
-        const firstItemCenter = itemWidth / 2;
-        const initialScroll = centerPosition - firstItemCenter;
+        const containerWidth = elements.rouletteContainer.clientWidth;
+        const itemWidth = 110; // 100px предмет + 10px gap
         
-        elements.itemsTrack.style.transform = `translateX(${initialScroll}px)`;
+        // Вычисляем позицию чтобы первый предмет был в центре
+        const initialPosition = (containerWidth / 2) - (itemWidth / 2);
+        
+        elements.itemsTrack.style.transform = `translateX(${initialPosition}px)`;
         elements.itemsTrack.style.transition = 'none';
-    }, 50);
+        
+        console.log('Рулетка центрирована, позиция:', initialPosition);
+    }, 100);
 }
 
 // Генерация начальной последовательности для рулетки
 function generateInitialRouletteSequence(caseItem) {
     const sequence = [];
-    const sequenceLength = 12; // Компактная рулетка для просмотра
+    const sequenceLength = 15; // Для предпросмотра
     
     // Собираем все возможные предметы для этого кейса
     const allItems = [];
     for (const [rarity, weight] of Object.entries(caseItem.rarityWeights)) {
         if (weight > 0 && minecraftItems[rarity]) {
             const items = minecraftItems[rarity];
-            // Берем по 1-2 предмета каждой редкости для демонстрации
-            const sampleSize = Math.min(2, items.length);
-            const shuffled = [...items].sort(() => Math.random() - 0.5);
-            allItems.push(...shuffled.slice(0, sampleSize).map(item => ({
+            allItems.push(...items.map(item => ({
                 ...item,
                 rarity: rarity
             })));
@@ -496,7 +496,8 @@ function renderRouletteItems() {
     
     rouletteItems.forEach((item, index) => {
         const rouletteItem = document.createElement('div');
-        rouletteItem.className = `roulette-item ${item.rarity}`;
+        rouletteItem.className = `roulette-item`;
+        rouletteItem.dataset.index = index;
         
         rouletteItem.innerHTML = `
             <div class="roulette-item-icon">${item.icon}</div>
@@ -589,12 +590,16 @@ function startRouletteForCase(wonItem) {
         isOpening = true;
         isRouletteActive = true;
         
-        // Генерируем полную последовательность с выигрышным предметом
+        // Генерируем полную последовательность с выигрышным предметом в центре
         rouletteItems = generateFullRouletteSequence(wonItem);
-        console.log('Сгенерирована полная последовательность:', rouletteItems.length, 'предметов');
         
-        // Находим индекс выигрышного предмета
-        winningItemIndex = findWinningItemIndex(wonItem);
+        // Вычисляем индекс выигрышного предмета (должен быть в середине последовательности)
+        winningItemIndex = Math.floor(rouletteItems.length / 2);
+        
+        // Убедимся что в центре именно выигрышный предмет
+        rouletteItems[winningItemIndex] = {...wonItem};
+        
+        console.log('Выигрышный предмет в центре на позиции:', winningItemIndex);
         
         // Отрисовываем предметы заново
         renderRouletteItems();
@@ -610,10 +615,10 @@ function startRouletteForCase(wonItem) {
 // Генерация полной последовательности для анимации
 function generateFullRouletteSequence(wonItem) {
     const sequence = [];
-    const sequenceLength = 35; // Длинная последовательность для плавности
+    const sequenceLength = 50; // Длинная последовательность для плавной анимации
     
-    // Добавляем много случайных предметов в начале
-    for (let i = 0; i < sequenceLength - 10; i++) {
+    // Добавляем случайные предметы в начале
+    for (let i = 0; i < sequenceLength / 2 - 5; i++) {
         const rarities = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
         const randomRarity = rarities[Math.floor(Math.random() * rarities.length)];
         const items = minecraftItems[randomRarity] || minecraftItems.common;
@@ -622,31 +627,20 @@ function generateFullRouletteSequence(wonItem) {
         sequence.push(randomItem);
     }
     
-    // Добавляем переходные предметы (разной редкости)
-    for (let i = 0; i < 5; i++) {
-        const transitionRarities = ['uncommon', 'rare', 'epic'];
-        const randomRarity = transitionRarities[Math.floor(Math.random() * transitionRarities.length)];
-        const items = minecraftItems[randomRarity] || minecraftItems.uncommon;
+    // Добавляем выигрышный предмет в середину
+    sequence.push({...wonItem});
+    
+    // Добавляем переходные предметы после выигрышного
+    for (let i = 0; i < sequenceLength / 2 - 5; i++) {
+        const rarities = ['common', 'uncommon', 'rare'];
+        const randomRarity = rarities[Math.floor(Math.random() * rarities.length)];
+        const items = minecraftItems[randomRarity] || minecraftItems.common;
         const randomItem = {...items[Math.floor(Math.random() * items.length)]};
         randomItem.rarity = randomRarity;
         sequence.push(randomItem);
     }
     
-    // Добавляем выигрышный предмет несколько раз подряд в конце
-    for (let i = 0; i < 5; i++) {
-        sequence.push({...wonItem});
-    }
-    
     return sequence;
-}
-
-// Поиск индекса выигрышного предмета в последовательности
-function findWinningItemIndex(wonItem) {
-    // Выигрышный предмет должен оказаться в зоне (не точно по центру)
-    const lastIndex = rouletteItems.length - 1;
-    // Выбираем случайный из последних 5 предметов для вариативности
-    const offset = Math.floor(Math.random() * 3) + 2; // 2, 3 или 4
-    return lastIndex - offset;
 }
 
 // Запуск анимации рулетки
@@ -661,151 +655,123 @@ function startRouletteAnimation(resolve) {
     }
     
     const containerWidth = rouletteContainer.clientWidth;
-    const itemWidth = 83; // 75px предмет + 8px gap
-    
-    // Рассчитываем позицию для попадания в зону выигрышного предмета
-    const centerPosition = containerWidth / 2;
-    const targetItemCenter = winningItemIndex * itemWidth + itemWidth / 2;
-    
-    // Добавляем случайное смещение (±60px) чтобы не останавливалось точно по центру
-    const randomOffset = (Math.random() * 120) - 60; // От -60 до +60 пикселей
-    targetScroll = centerPosition - targetItemCenter + randomOffset;
-    
-    // Проверяем границы, чтобы не вылезло за пределы
+    const itemWidth = 110; // 100px предмет + 10px gap
     const trackWidth = itemWidth * rouletteItems.length;
-    const maxScroll = trackWidth - containerWidth;
-    const minScroll = 0;
-    targetScroll = Math.max(-maxScroll, Math.min(targetScroll, minScroll));
     
-    // Текущая позиция (центр первого предмета)
-    const currentItemCenter = itemWidth / 2;
-    const currentScroll = centerPosition - currentItemCenter;
+    // Начальная позиция (первый предмет в центре)
+    const startPosition = (containerWidth / 2) - (itemWidth / 2);
     
-    console.log('Параметры анимации:', {
+    // Вычисляем финальную позицию так, чтобы выигрышный предмет оказался в центре
+    const targetItemCenter = winningItemIndex * itemWidth + itemWidth / 2;
+    const finalPosition = (containerWidth / 2) - targetItemCenter;
+    
+    console.log('Анимационные параметры:', {
         containerWidth,
         itemWidth,
         trackWidth,
-        maxScroll,
-        centerPosition,
-        currentScroll,
-        targetScroll,
+        startPosition,
+        finalPosition,
         winningItemIndex,
-        randomOffset
+        targetItemCenter
     });
     
-    // Устанавливаем начальную позицию для анимации
+    // Устанавливаем начальную позицию
     if (elements.itemsTrack) {
-        elements.itemsTrack.style.transition = 'transform 0.6s ease-out';
-        elements.itemsTrack.style.transform = `translateX(${currentScroll}px)`;
+        elements.itemsTrack.style.transition = 'none';
+        elements.itemsTrack.style.transform = `translateX(${startPosition}px)`;
     }
     
     // Даем браузеру время на отрисовку
     setTimeout(() => {
-        // Запоминаем время начала анимации
         animationStartTime = Date.now();
         
+        // Случайная длительность анимации: от 3000 до 5000ms для разнообразия
+        const animationDuration = 3000 + Math.random() * 2000;
+        
         // Запускаем анимацию
-        animateRoulette(resolve);
-    }, 600);
+        animateRoulette(startPosition, finalPosition, animationDuration, resolve);
+    }, 100);
 }
 
 // Анимация рулетки
-function animateRoulette(resolve) {
+function animateRoulette(startPos, endPos, duration, resolve) {
     if (!isRouletteActive) return;
     
     const elapsed = Date.now() - animationStartTime;
-    let progress = Math.min(elapsed / animationDuration, 1);
+    let progress = Math.min(elapsed / duration, 1);
     
-    // Разбиваем анимацию на 4 фазы для максимальной плавности:
-    let easeProgress;
+    // Разные фазы анимации для реалистичности
+    let easedProgress;
     
-    if (progress < 0.15) {
-        // Фаза 1: Очень плавный старт (0-15%)
-        const phaseProgress = progress / 0.15;
-        easeProgress = easeOutSine(phaseProgress) * 0.15;
-    } else if (progress < 0.45) {
-        // Фаза 2: Плавное ускорение (15-45%)
-        const phaseProgress = (progress - 0.15) / 0.3;
-        easeProgress = 0.15 + easeOutCubic(phaseProgress) * 0.3;
-    } else if (progress < 0.75) {
-        // Фаза 3: Максимальная скорость (45-75%)
-        const phaseProgress = (progress - 0.45) / 0.3;
-        easeProgress = 0.45 + phaseProgress * 0.3;
+    if (progress < 0.2) {
+        // Фаза 1: Медленный старт (0-20%)
+        const phaseProgress = progress / 0.2;
+        easedProgress = easeOutSine(phaseProgress) * 0.2;
+    } else if (progress < 0.6) {
+        // Фаза 2: Средняя скорость (20-60%)
+        const phaseProgress = (progress - 0.2) / 0.4;
+        easedProgress = 0.2 + phaseProgress * 0.4;
+    } else if (progress < 0.8) {
+        // Фаза 3: Быстрая скорость (60-80%)
+        const phaseProgress = (progress - 0.6) / 0.2;
+        easedProgress = 0.6 + easeOutCubic(phaseProgress) * 0.2;
     } else {
-        // Фаза 4: Плавное замедление с "отскоком" (75-100%)
-        const phaseProgress = (progress - 0.75) / 0.25;
-        easeProgress = 0.75 + easeInOutBack(phaseProgress) * 0.25;
+        // Фаза 4: Замедление с отскоком (80-100%)
+        const phaseProgress = (progress - 0.8) / 0.2;
+        easedProgress = 0.8 + easeInOutBack(phaseProgress) * 0.2;
     }
     
-    // Прокручиваем трек
-    const containerWidth = elements.rouletteContainer.clientWidth;
-    const itemWidth = 83;
-    const currentItemCenter = itemWidth / 2;
-    const currentScroll = containerWidth / 2 - currentItemCenter;
-    
-    const rawPosition = currentScroll + (targetScroll - currentScroll) * easeProgress;
-    scrollPosition = rawPosition;
-    
-    // Проверяем, чтобы не вылезало за границы
-    const trackWidth = itemWidth * rouletteItems.length;
-    const maxScrollValue = trackWidth - containerWidth;
-    const boundedPosition = Math.max(-maxScrollValue, Math.min(rawPosition, 0));
+    // Плавное движение с замедлением в конце
+    const currentPos = startPos + (endPos - startPos) * easedProgress;
     
     if (elements.itemsTrack) {
-        elements.itemsTrack.style.transform = `translateX(${boundedPosition}px)`;
+        // В последней фазе используем более плавную анимацию
+        if (progress > 0.85) {
+            elements.itemsTrack.style.transition = 'transform 0.1s linear';
+        }
+        elements.itemsTrack.style.transform = `translateX(${currentPos}px)`;
     }
     
-    // Определяем предмет в зоне
+    // Обновляем подсветку предметов
     updateCenterZoneItem();
     
     if (progress < 1) {
-        // Продолжаем анимацию
-        requestAnimationFrame(() => animateRoulette(resolve));
+        requestAnimationFrame(() => animateRoulette(startPos, endPos, duration, resolve));
     } else {
         // Завершение анимации
         finishRouletteAnimation(resolve);
     }
 }
 
-// Обновление предмета в зоне
+// Обновление подсветки предмета в центре
 function updateCenterZoneItem() {
-    const container = elements.rouletteContainer;
-    if (!container) return;
+    if (!elements.rouletteContainer || !elements.itemsTrack) return;
     
-    const containerRect = container.getBoundingClientRect();
-    const zoneWidth = 120; // Широкая зона в 120px
-    const zoneStart = containerRect.left + containerRect.width / 2 - zoneWidth / 2;
-    const zoneEnd = containerRect.left + containerRect.width / 2 + zoneWidth / 2;
+    const containerRect = elements.rouletteContainer.getBoundingClientRect();
+    const centerX = containerRect.left + containerRect.width / 2;
+    const zoneWidth = 60; // Ширина зоны для определения центрального предмета
     
     const items = document.querySelectorAll('.roulette-item');
-    let bestItem = null;
-    let bestDistance = Infinity;
+    let closestItem = null;
+    let closestDistance = Infinity;
     
-    items.forEach((item, index) => {
+    items.forEach((item) => {
         const itemRect = item.getBoundingClientRect();
         const itemCenter = itemRect.left + itemRect.width / 2;
+        const distanceToCenter = Math.abs(itemCenter - centerX);
         
-        // Проверяем, находится ли предмет в зоне
-        const inZone = itemCenter >= zoneStart && itemCenter <= zoneEnd;
-        
-        // Снимаем подсветку со всех
+        // Снимаем подсветку
         item.classList.remove('highlighted');
         
-        if (inZone) {
-            // Находим предмет, который ближе всего к центру зоны
-            const zoneCenter = containerRect.left + containerRect.width / 2;
-            const distanceToCenter = Math.abs(itemCenter - zoneCenter);
-            
-            if (distanceToCenter < bestDistance) {
-                bestDistance = distanceToCenter;
-                bestItem = item;
-            }
+        if (distanceToCenter < zoneWidth && distanceToCenter < closestDistance) {
+            closestDistance = distanceToCenter;
+            closestItem = item;
         }
     });
     
-    // Подсвечиваем лучший предмет в зоне
-    if (bestItem && bestDistance < 80) {
-        bestItem.classList.add('highlighted');
+    // Подсвечиваем ближайший предмет к центру
+    if (closestItem && closestDistance < zoneWidth) {
+        closestItem.classList.add('highlighted');
     }
 }
 
@@ -814,49 +780,23 @@ function finishRouletteAnimation(resolve) {
     console.log('Завершение анимации рулетки');
     isScrolling = false;
     
-    // Плавная финальная корректировка позиции
-    if (elements.itemsTrack) {
-        elements.itemsTrack.style.transition = 'transform 1s cubic-bezier(0.34, 1.56, 0.64, 1)';
-        elements.itemsTrack.style.transform = `translateX(${targetScroll}px)`;
-    }
-    
-    // Ждем завершения финальной анимации
+    // Финальная корректировка позиции для точного центрирования
     setTimeout(() => {
-        // Находим подсвеченный предмет (в зоне)
+        // Добавляем анимацию выигрыша на центральном предмете
         const highlightedItem = document.querySelector('.roulette-item.highlighted');
         if (highlightedItem) {
-            console.log('Найден подсвеченный предмет в зоне:', highlightedItem);
-            
-            // Добавляем анимацию выигрыша
             highlightedItem.classList.add('winning-spin');
             
-            // Находим данные выигрышного предмета
+            // Получаем данные выигрышного предмета
             const itemName = highlightedItem.querySelector('.roulette-item-name').textContent;
             const itemIcon = highlightedItem.querySelector('.roulette-item-icon').textContent;
+            const itemIndex = parseInt(highlightedItem.dataset.index);
             
             // Находим полные данные предмета
-            const allItems = [
-                ...minecraftItems.common,
-                ...minecraftItems.uncommon,
-                ...minecraftItems.rare,
-                ...minecraftItems.epic,
-                ...minecraftItems.legendary
-            ];
-            
-            const wonItemData = allItems.find(item => 
-                item.name === itemName && item.icon === itemIcon
-            );
+            const wonItemData = rouletteItems[itemIndex];
             
             if (wonItemData) {
-                // Добавляем редкость из класса элемента
-                const rarityClass = Array.from(highlightedItem.classList).find(cls => 
-                    ['common', 'uncommon', 'rare', 'epic', 'legendary'].includes(cls)
-                );
-                
-                currentItem = {
-                    ...wonItemData,
-                    rarity: rarityClass || 'common'
-                };
+                currentItem = wonItemData;
                 
                 console.log('Выигрышный предмет:', currentItem);
                 
@@ -868,7 +808,7 @@ function finishRouletteAnimation(resolve) {
                 
                 saveUserData();
                 
-                // Показываем результат через 2 секунды
+                // Показываем результат через 1.5 секунды
                 setTimeout(() => {
                     // Скрываем модальное окно кейса
                     hideModal(elements.caseModal);
@@ -887,16 +827,16 @@ function finishRouletteAnimation(resolve) {
                     isOpening = false;
                     isRouletteActive = false;
                     resolve();
-                }, 2000);
+                }, 1500);
             } else {
-                console.error('Не удалось найти данные предмета:', itemName, itemIcon);
+                console.error('Не удалось найти данные выигрышного предмета');
                 handleRouletteError(resolve);
             }
         } else {
-            console.error('Не найден подсвеченный предмет в зоне');
+            console.error('Не найден подсвеченный предмет');
             handleRouletteError(resolve);
         }
-    }, 1000);
+    }, 500);
 }
 
 // Обработка ошибки рулетки

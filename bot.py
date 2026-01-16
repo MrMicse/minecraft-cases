@@ -4,6 +4,7 @@ import json
 import sqlite3
 from datetime import datetime
 from typing import Dict, List
+from admin_panel import admin_router
 import random
 from dotenv import load_dotenv
 
@@ -463,7 +464,7 @@ async def cmd_start(message: Message):
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="⛏️ Открыть Minecraаft Кейсы",
+                    text="⛏️ Открыть Minecraft Кейсы",
                     web_app=WebAppInfo(url="https://mrmicse.github.io/minecraft-cases/")
                 )
             ],
@@ -856,6 +857,7 @@ async def main():
     """Основная функция запуска бота"""
     # Инициализация базы данных
     init_db()
+    dp.include_router(admin_router)
     
     print("=" * 50)
     print("🎮 Minecraft Case Opening Bot")
