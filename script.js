@@ -225,23 +225,21 @@ async function loadUserData() {
 
         console.log('Загружаем данные пользователя...');
         
-        // Отправляем запрос на получение данных через Telegram Bot API
         const dataToSend = {
             action: 'init',
             userId: tg.initDataUnsafe.user.id,
             initData: tg.initData
         };
         
-        // Отправляем данные через Telegram WebApp
-        tg.sendData(JSON.stringify(dataToSend));
+        const response = await sendToBot(dataToSend);
         
-        // Ждем ответа от бота
-        const userDataResponse = await waitForBotResponse();
-        
-        if (userDataResponse && userDataResponse.success) {
-            userData.balance = userDataResponse.user.balance || 10000;
-            userData.inventory = userDataResponse.inventory || [];
+        if (response && response.success) {
+            userData.balance = response.user.balance || 10000;
+            userData.inventory = response.inventory || [];
             console.log('Данные загружены с сервера:', userData);
+            
+            // Синхронизируем локальные данные с серверными
+            saveLocalData();
         } else {
             console.log('Не удалось загрузить данные с сервера, используем локальные');
             loadLocalData();
@@ -252,8 +250,8 @@ async function loadUserData() {
     }
 }
 
-// Ожидание ответа от бота
-function waitForBotResponse() {
+// Отправка данных боту и ожидание ответа
+async function sendToBot(data) {
     return new Promise((resolve) => {
         if (!tg) {
             resolve(null);
@@ -263,19 +261,24 @@ function waitForBotResponse() {
         const timeout = setTimeout(() => {
             console.log('Таймаут ожидания ответа от бота');
             resolve(null);
-        }, 5000);
+        }, 10000);
         
-        tg.onEvent('webAppDataReceived', (data) => {
+        const callback = (eventData) => {
             clearTimeout(timeout);
+            tg.offEvent('webAppDataReceived', callback);
+            
             try {
-                console.log('Получены данные от бота:', data);
-                const parsedData = JSON.parse(data);
+                console.log('Получены данные от бота:', eventData);
+                const parsedData = JSON.parse(eventData);
                 resolve(parsedData);
             } catch (e) {
                 console.error('Ошибка парсинга данных от бота:', e);
                 resolve(null);
             }
-        });
+        };
+        
+        tg.onEvent('webAppDataReceived', callback);
+        tg.sendData(JSON.stringify(data));
     });
 }
 
@@ -319,9 +322,15 @@ async function saveUserData() {
             initData: tg.initData
         };
         
-        tg.sendData(JSON.stringify(dataToSend));
+        const response = await sendToBot(dataToSend);
         
-        // Также сохраняем локально на случай проблем с соединением
+        if (response && response.success) {
+            console.log('Данные успешно сохранены на сервере');
+        } else {
+            console.log('Ошибка сохранения на сервере');
+        }
+        
+        // Всегда сохраняем локально
         saveLocalData();
         
     } catch (error) {
@@ -605,7 +614,6 @@ async function openCase() {
     elements.openCaseBtn.innerHTML = '⏳ Открывается...';
     
     try {
-        // Отправляем запрос на открытие кейса
         const dataToSend = {
             action: 'open_case',
             userId: tg.initDataUnsafe.user.id,
@@ -613,17 +621,12 @@ async function openCase() {
             initData: tg.initData
         };
         
-        tg.sendData(JSON.stringify(dataToSend));
-        
-        // Ждем ответа от бота
-        const response = await waitForBotResponse();
+        const response = await sendToBot(dataToSend);
         
         if (response && response.success) {
-            // Обновляем данные из ответа бота
             userData.balance = response.new_balance;
             currentItem = response.item;
             
-            // Добавляем предмет в инвентарь
             userData.inventory.unshift({
                 ...response.item,
                 obtained_at: new Date().toISOString()
@@ -633,7 +636,6 @@ async function openCase() {
             
             console.log('Кейс успешно открыт:', response.item);
             
-            // Запускаем рулетку с выигрышным предметом
             await startRouletteForCase(response.item);
             
         } else {
@@ -814,7 +816,6 @@ function finishRouletteAnimation(resolve) {
                 
                 console.log('Выигрышный предмет:', currentItem);
                 
-                // Сохраняем данные
                 saveUserData();
                 
                 setTimeout(() => {
@@ -988,15 +989,16 @@ async function syncBalance() {
             initData: tg.initData
         };
         
-        tg.sendData(JSON.stringify(dataToSend));
-        
-        const response = await waitForBotResponse();
+        const response = await sendToBot(dataToSend);
         
         if (response && response.balance !== undefined) {
             if (response.balance !== userData.balance) {
                 userData.balance = response.balance;
                 elements.balance.textContent = userData.balance.toLocaleString();
                 console.log('Баланс синхронизирован:', userData.balance);
+                
+                // Сохраняем синхронизированные данные локально
+                saveLocalData();
                 
                 // Обновляем кнопки открытия кейса
                 if (currentCase) {

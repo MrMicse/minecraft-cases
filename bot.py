@@ -119,10 +119,6 @@ def init_db():
     
     conn.commit()
     
-    # Сброс баланса всех пользователей до 10000
-    cursor.execute("UPDATE users SET balance = 10000 WHERE balance != 10000")
-    conn.commit()
-    
     # Проверяем и добавляем начальные данные
     cursor.execute("SELECT COUNT(*) FROM items")
     if cursor.fetchone()[0] == 0:
@@ -131,7 +127,6 @@ def init_db():
     
     conn.close()
     print(f"✅ База данных инициализирована: {DB_PATH}")
-    print(f"💰 Баланс всех пользователей установлен на 10000 💎")
 
 def add_initial_data(cursor):
     """Добавление начальных данных"""
@@ -224,6 +219,13 @@ def get_user(user_id: int) -> Dict:
             (user_id,)
         )
         user_data = cursor.fetchone()
+    else:
+        # Обновляем время последнего входа
+        cursor.execute(
+            "UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE user_id = ?",
+            (user_id,)
+        )
+        conn.commit()
     
     conn.close()
     
@@ -437,16 +439,6 @@ async def cmd_start(message: Message):
     
     user = get_user(message.from_user.id)
     
-    # Обновляем время входа
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE user_id = ?",
-        (user["user_id"],)
-    )
-    conn.commit()
-    conn.close()
-    
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -616,7 +608,7 @@ async def cmd_add_balance(message: Message, command: CommandObject):
 
 @router.message(Command("resetbalance"))
 async def cmd_reset_balance(message: Message, command: CommandObject = None):
-    """Сброс баланса"""
+    """Сброс баланса конкретному пользователю"""
     if message.from_user.id != ADMIN_ID:
         await message.answer("⛔ У вас нет прав администратора!")
         return
@@ -676,9 +668,45 @@ async def cmd_reset_balance(message: Message, command: CommandObject = None):
             await message.answer(f"✅ Баланс всех {user_count} пользователей сброшен до 10000 💎")
             
     except ValueError:
-        await message.answer("❌ Неверный формат user_id!")
+        await message.answer("❌ Неверный формат user_id! Используйте: /resetbalance <user_id>")
     except Exception as e:
         await message.answer(f"❌ Ошибка: {str(e)}")
+
+@router.message(Command("syncall"))
+async def cmd_sync_all(message: Message):
+    """Синхронизация всех пользователей"""
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ У вас нет прав администратора!")
+        return
+    
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT COUNT(*) FROM users")
+        user_count = cursor.fetchone()[0]
+        
+        await message.answer(f"🔄 Начинаю синхронизацию {user_count} пользователей...")
+        
+        cursor.execute("SELECT user_id, balance FROM users")
+        users = cursor.fetchall()
+        
+        synced_count = 0
+        for user_id, balance in users:
+            cursor.execute(
+                """INSERT INTO transactions (user_id, type, amount, description) 
+                   VALUES (?, 'admin', 0, 'Синхронизация баланса')""",
+                (user_id,)
+            )
+            synced_count += 1
+        
+        conn.commit()
+        conn.close()
+        
+        await message.answer(f"✅ Синхронизировано {synced_count} пользователей!")
+        
+    except Exception as e:
+        await message.answer(f"❌ Ошибка синхронизации: {str(e)}")
 
 @router.message(Command("admin"))
 async def cmd_admin(message: Message):
@@ -687,13 +715,33 @@ async def cmd_admin(message: Message):
         await message.answer("⛔ У вас нет прав администратора!")
         return
     
-    text = """
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    cursor.execute("SELECT COUNT(*) FROM users")
+    user_count = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT SUM(balance) FROM users")
+    total_balance = cursor.fetchone()[0] or 0
+    
+    cursor.execute("SELECT COUNT(*) FROM opening_history")
+    openings_count = cursor.fetchone()[0]
+    
+    conn.close()
+    
+    text = f"""
 👑 <b>Админ панель</b>
+
+📊 <b>Статистика системы:</b>
+👥 Пользователей: {user_count}
+💰 Общий баланс: {total_balance} 💎
+🎰 Открытий кейсов: {openings_count}
 
 <b>Команды для управления балансом:</b>
 /setbalance <user_id> <amount> - Установить точный баланс
 /addbalance <user_id> <amount> - Добавить к балансу
 /resetbalance [user_id] - Сбросить баланс до 10000
+/syncall - Синхронизировать всех пользователей
 
 <b>Примеры:</b>
 <code>/setbalance 123456789 50000</code> - Установить баланс 50000
@@ -766,14 +814,35 @@ async def handle_web_app_data(message: Message):
         elif action == 'save_data':
             # Сохранение данных (для синхронизации)
             balance = data.get('balance', 10000)
+            inventory_data = data.get('inventory', [])
             
             conn = sqlite3.connect(DB_PATH)
             cursor = conn.cursor()
+            
+            # Обновляем баланс
             cursor.execute("UPDATE users SET balance = ? WHERE user_id = ?", (balance, user_id))
+            
+            # Очищаем старый инвентарь
+            cursor.execute("DELETE FROM inventory WHERE user_id = ?", (user_id,))
+            
+            # Добавляем предметы из инвентаря
+            for item in inventory_data:
+                cursor.execute(
+                    """INSERT INTO inventory (user_id, item_id) 
+                       SELECT ?, item_id FROM items WHERE name = ? LIMIT 1""",
+                    (user_id, item.get('name'))
+                )
+            
+            cursor.execute(
+                """INSERT INTO transactions (user_id, type, amount, description) 
+                   VALUES (?, 'admin', 0, 'Синхронизация из Web App')""",
+                (user_id,)
+            )
+            
             conn.commit()
             conn.close()
             
-            print(f"💾 Сохранены данные пользователя {user_id}: баланс {balance}")
+            print(f"💾 Сохранены данные пользователя {user_id}: баланс {balance}, предметов: {len(inventory_data)}")
             await message.answer(json.dumps({'success': True}))
             
         elif action == 'sync_balance':
