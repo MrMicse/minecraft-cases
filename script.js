@@ -7,12 +7,11 @@ if (tg) {
 
 // Глобальные переменные
 let userData = {
-    balance: 10000, // Увеличен начальный баланс
+    balance: 10000,
     inventory: []
 };
 
 let casesData = [];
-let inventoryData = [];
 let currentCase = null;
 let currentItem = null;
 let isOpening = false;
@@ -25,7 +24,7 @@ let rouletteItems = [];
 let winningItemIndex = 0;
 let animationStartTime = 0;
 let isRouletteActive = false;
-let animationPhase = 0; // 0: начало, 1: ускорение, 2: максимальная, 3: замедление
+let animationPhase = 0;
 
 // DOM элементы
 const elements = {
@@ -110,7 +109,7 @@ const minecraftItems = {
     ]
 };
 
-// Плавные easing функции
+// Плавные easing функции (остаются без изменений)
 function easeOutSine(t) {
     return Math.sin(t * Math.PI / 2);
 }
@@ -141,8 +140,11 @@ async function initApp() {
     console.log('Инициализация приложения...');
     showLoading();
     
-    // Загружаем данные с сервера
-    await loadServerData();
+    // Загружаем данные через Telegram Bot API
+    await loadUserDataFromTelegram();
+    
+    // Создаем кейсы локально
+    createDefaultCases();
     
     updateUI();
     
@@ -152,37 +154,70 @@ async function initApp() {
     }, 1000);
 }
 
-// Загрузка данных с сервера
-async function loadServerData() {
+// Загрузка данных через Telegram Bot API
+async function loadUserDataFromTelegram() {
     try {
         if (!tg || !tg.initDataUnsafe?.user?.id) {
-            console.log('Telegram WebApp не инициализирован, используем локальные данные');
+            console.log('Telegram WebApp не инициализирован');
             loadLocalData();
             return;
         }
 
-        console.log('Загрузка данных с сервера...');
-        const response = await fetch(`/api/user/${tg.initDataUnsafe.user.id}`, {
-            method: 'GET',
-            headers: {
-                'Content-Type': 'application/json',
-            }
+        console.log('Загружаем данные через Telegram Bot API...');
+        
+        // Отправляем запрос на инициализацию через Telegram Bot API
+        const response = await sendTelegramData({
+            action: 'init',
+            userId: tg.initDataUnsafe.user.id
         });
 
-        if (response.ok) {
-            const serverData = await response.json();
-            userData.balance = serverData.balance || 10000;
-            inventoryData = serverData.inventory || [];
-            casesData = serverData.cases || [];
+        if (response && response.success) {
+            userData.balance = response.user.balance || 10000;
+            userData.inventory = response.inventory || [];
+            casesData = response.cases || [];
             
-            console.log('Данные загружены с сервера:', userData);
+            console.log('Данные загружены через Telegram:', userData);
         } else {
-            console.log('Сервер недоступен, используем локальные данные');
+            console.log('Не удалось загрузить данные через Telegram, используем локальные');
             loadLocalData();
         }
     } catch (error) {
-        console.log('Ошибка загрузки с сервера:', error);
+        console.log('Ошибка загрузки через Telegram:', error);
         loadLocalData();
+    }
+}
+
+// Отправка данных через Telegram Bot API
+async function sendTelegramData(data) {
+    if (!tg || !tg.initDataUnsafe?.user?.id) {
+        console.log('Telegram WebApp не инициализирован');
+        return null;
+    }
+
+    try {
+        // Отправляем данные через Telegram WebApp
+        tg.sendData(JSON.stringify(data));
+        
+        // Ждем ответа от бота (обработка через onEvent)
+        return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+                resolve(null);
+            }, 5000);
+            
+            tg.onEvent('webAppDataReceived', (receivedData) => {
+                clearTimeout(timeout);
+                try {
+                    const parsedData = JSON.parse(receivedData);
+                    resolve(parsedData);
+                } catch (e) {
+                    console.error('Ошибка парсинга данных:', e);
+                    resolve(null);
+                }
+            });
+        });
+    } catch (error) {
+        console.error('Ошибка отправки данных:', error);
+        return null;
     }
 }
 
@@ -193,7 +228,7 @@ function loadLocalData() {
         if (savedData) {
             const data = JSON.parse(savedData);
             userData.balance = data.balance || 10000;
-            inventoryData = data.inventory || [];
+            userData.inventory = data.inventory || [];
             console.log('Локальные данные загружены:', userData);
         } else {
             console.log('Локальных данных нет, используем значения по умолчанию');
@@ -201,9 +236,6 @@ function loadLocalData() {
     } catch (error) {
         console.log('Ошибка загрузки локальных данных:', error);
     }
-    
-    // Создаем кейсы
-    createDefaultCases();
 }
 
 // Создание кейсов по умолчанию
@@ -260,8 +292,8 @@ function createDefaultCases() {
     ];
 }
 
-// Сохранение данных на сервер
-async function saveServerData() {
+// Сохранение данных через Telegram Bot API
+async function saveDataToTelegram() {
     if (!tg || !tg.initDataUnsafe?.user?.id) {
         console.log('Telegram WebApp не инициализирован, сохраняем локально');
         saveLocalData();
@@ -269,26 +301,21 @@ async function saveServerData() {
     }
 
     try {
-        const response = await fetch('/api/save', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                userId: tg.initDataUnsafe.user.id,
-                balance: userData.balance,
-                inventory: inventoryData
-            })
+        const response = await sendTelegramData({
+            action: 'save_data',
+            userId: tg.initDataUnsafe.user.id,
+            balance: userData.balance,
+            inventory: userData.inventory
         });
 
-        if (response.ok) {
-            console.log('Данные сохранены на сервер');
+        if (response && response.success) {
+            console.log('Данные сохранены через Telegram');
         } else {
-            console.log('Ошибка сохранения на сервер, сохраняем локально');
+            console.log('Ошибка сохранения через Telegram, сохраняем локально');
             saveLocalData();
         }
     } catch (error) {
-        console.log('Ошибка сохранения на сервер:', error);
+        console.log('Ошибка сохранения через Telegram:', error);
         saveLocalData();
     }
 }
@@ -297,7 +324,7 @@ async function saveServerData() {
 function saveLocalData() {
     const data = {
         balance: userData.balance,
-        inventory: inventoryData
+        inventory: userData.inventory
     };
     localStorage.setItem('minecraft_case_opening_data', JSON.stringify(data));
     console.log('Локальные данные сохранены:', data);
@@ -310,10 +337,10 @@ async function updateUI() {
     renderInventory();
     
     // Сохраняем данные
-    await saveServerData();
+    await saveDataToTelegram();
 }
 
-// Отрисовка кейсов с превью предметов
+// Отрисовка кейсов (остается без изменений)
 function renderCases() {
     console.log('Отрисовка кейсов...');
     elements.casesGrid.innerHTML = '';
@@ -324,7 +351,6 @@ function renderCases() {
         caseCard.dataset.id = caseItem.id;
         caseCard.style.setProperty('--index', index);
         
-        // Собираем примеры предметов для превью
         const previewItems = getPreviewItems(caseItem);
         
         caseCard.innerHTML = `
@@ -344,8 +370,6 @@ function renderCases() {
         caseCard.addEventListener('click', () => openCaseModal(caseItem));
         elements.casesGrid.appendChild(caseCard);
     });
-    
-    console.log('Кейсы отрисованы:', casesData.length);
 }
 
 // Получение предметов для превью кейса
@@ -353,7 +377,6 @@ function getPreviewItems(caseItem) {
     const previewItems = [];
     const allItems = [];
     
-    // Собираем все возможные предметы для этого кейса
     for (const [rarity, weight] of Object.entries(caseItem.rarityWeights)) {
         if (weight > 0) {
             const items = minecraftItems[rarity] || [];
@@ -361,7 +384,6 @@ function getPreviewItems(caseItem) {
         }
     }
     
-    // Выбираем 3-5 случайных предметов для превью
     const count = Math.min(4, allItems.length);
     const shuffledItems = [...allItems].sort(() => Math.random() - 0.5);
     
@@ -379,7 +401,7 @@ function renderInventory() {
     console.log('Отрисовка инвентаря...');
     elements.inventoryGrid.innerHTML = '';
     
-    if (inventoryData.length === 0) {
+    if (userData.inventory.length === 0) {
         elements.inventoryGrid.innerHTML = `
             <div style="grid-column: 1/-1; text-align: center; padding: 40px;">
                 <div style="font-size: 3rem; margin-bottom: 20px; animation: float 3s infinite ease-in-out;">🎒</div>
@@ -389,11 +411,10 @@ function renderInventory() {
                 </p>
             </div>
         `;
-        console.log('Инвентарь пуст');
         return;
     }
     
-    inventoryData.forEach(item => {
+    userData.inventory.forEach(item => {
         const itemElement = document.createElement('div');
         itemElement.className = 'inventory-item';
         itemElement.dataset.rarity = item.rarity;
@@ -410,8 +431,6 @@ function renderInventory() {
         itemElement.addEventListener('click', () => viewItem(item));
         elements.inventoryGrid.appendChild(itemElement);
     });
-    
-    console.log('Инвентарь отрисован:', inventoryData.length, 'предметов');
 }
 
 // Открытие модального окна кейса
@@ -419,7 +438,6 @@ function openCaseModal(caseItem) {
     console.log('Открытие модального окна кейса:', caseItem.name);
     currentCase = caseItem;
     
-    // Сбрасываем состояние рулетки
     isOpening = false;
     isRouletteActive = false;
     
@@ -428,7 +446,6 @@ function openCaseModal(caseItem) {
     elements.openPrice.textContent = caseItem.price;
     elements.caseDescription.textContent = caseItem.description;
     
-    // Проверяем баланс
     if (userData.balance < caseItem.price) {
         elements.openCaseBtn.disabled = true;
         elements.openCaseBtn.innerHTML = '❌ Недостаточно 💎';
@@ -437,24 +454,68 @@ function openCaseModal(caseItem) {
         elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${caseItem.price} 💎`;
     }
     
-    // Создаем предпросмотр предметов
     createCaseItemsPreview(caseItem);
-    
-    // Подготавливаем рулетку
     prepareRouletteForCase(caseItem);
     
     showModal(elements.caseModal);
 }
 
-// Создание превью предметов в модальном окне
+// Открытие кейса через Telegram Bot API
+async function openCase() {
+    console.log('Открытие кейса...');
+    if (!currentCase || !userData || isOpening) {
+        console.log('Не могу открыть кейс');
+        return;
+    }
+    
+    if (userData.balance < currentCase.price) {
+        alert('❌ Недостаточно алмазов!');
+        return;
+    }
+    
+    console.log('Списываем средства...');
+    
+    // Отключаем кнопку
+    elements.openCaseBtn.disabled = true;
+    elements.openCaseBtn.innerHTML = '⏳ Открывается...';
+    
+    try {
+        // Отправляем запрос на открытие кейса через Telegram
+        const response = await sendTelegramData({
+            action: 'open_case',
+            case_id: currentCase.id
+        });
+        
+        if (response && response.success) {
+            // Обновляем баланс и инвентарь из ответа
+            userData.balance = response.new_balance;
+            userData.inventory.unshift(response.item);
+            
+            elements.balance.textContent = userData.balance.toLocaleString();
+            currentItem = response.item;
+            
+            // Запускаем рулетку
+            await startRouletteForCase(response.item);
+        } else {
+            alert('❌ Ошибка при открытии кейса');
+            elements.openCaseBtn.disabled = false;
+            elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${currentCase.price} 💎`;
+        }
+    } catch (error) {
+        console.error('Ошибка открытия кейса:', error);
+        alert('❌ Ошибка соединения');
+        elements.openCaseBtn.disabled = false;
+        elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${currentCase.price} 💎`;
+    }
+}
+
+// Остальные функции рулетки (без изменений)
 function createCaseItemsPreview(caseItem) {
     const previewContainer = document.querySelector('.case-items-preview-modal');
     if (!previewContainer) return;
     
-    // Очищаем контейнер
     previewContainer.innerHTML = '';
     
-    // Собираем все предметы для этого кейса
     const allItems = [];
     for (const [rarity, weight] of Object.entries(caseItem.rarityWeights)) {
         if (weight > 0 && minecraftItems[rarity]) {
@@ -466,12 +527,10 @@ function createCaseItemsPreview(caseItem) {
         }
     }
     
-    // Выбираем 6 случайных предметов для превью
     const previewCount = Math.min(6, allItems.length);
     const shuffledItems = [...allItems].sort(() => Math.random() - 0.5);
     const previewItems = shuffledItems.slice(0, previewCount);
     
-    // Добавляем предметы в превью
     previewItems.forEach(item => {
         const previewItem = document.createElement('div');
         previewItem.className = 'preview-item';
@@ -483,46 +542,32 @@ function createCaseItemsPreview(caseItem) {
     });
 }
 
-// Подготовка рулетки для кейса
 function prepareRouletteForCase(caseItem) {
     console.log('Подготовка рулетки для кейса:', caseItem.name);
     
-    // Генерируем начальную последовательность предметов
     rouletteItems = generateInitialRouletteSequence(caseItem);
-    console.log('Сгенерирована начальная последовательность:', rouletteItems.length, 'предметов');
-    
-    // Сбрасываем позицию
     scrollPosition = 0;
     targetScroll = 0;
     isScrolling = false;
     
-    // Отрисовываем предметы
     renderRouletteItems();
     
-    // Даем время на отрисовку
     setTimeout(() => {
         if (!elements.rouletteContainer || !elements.itemsTrack) return;
         
-        // Центрируем первый предмет
         const containerWidth = elements.rouletteContainer.clientWidth;
-        const itemWidth = 110; // 100px предмет + 10px gap
-        
-        // Вычисляем позицию чтобы первый предмет был в центре
+        const itemWidth = 110;
         const initialPosition = (containerWidth / 2) - (itemWidth / 2);
         
         elements.itemsTrack.style.transform = `translateX(${initialPosition}px)`;
         elements.itemsTrack.style.transition = 'none';
-        
-        console.log('Рулетка центрирована, позиция:', initialPosition);
     }, 100);
 }
 
-// Генерация начальной последовательности для рулетки
 function generateInitialRouletteSequence(caseItem) {
     const sequence = [];
-    const sequenceLength = 15; // Для предпросмотра
+    const sequenceLength = 15;
     
-    // Собираем все возможные предметы для этого кейса
     const allItems = [];
     for (const [rarity, weight] of Object.entries(caseItem.rarityWeights)) {
         if (weight > 0 && minecraftItems[rarity]) {
@@ -534,14 +579,12 @@ function generateInitialRouletteSequence(caseItem) {
         }
     }
     
-    // Если предметов мало, добавляем случайные
     while (sequence.length < sequenceLength) {
         if (allItems.length === 0) break;
         const randomItem = {...allItems[Math.floor(Math.random() * allItems.length)]};
         sequence.push(randomItem);
     }
     
-    // Если все еще мало, добавляем предметы из всех категорий
     if (sequence.length < sequenceLength) {
         const allMinecraftItems = [
             ...minecraftItems.common,
@@ -561,7 +604,6 @@ function generateInitialRouletteSequence(caseItem) {
     return sequence;
 }
 
-// Отрисовка предметов в рулетке
 function renderRouletteItems() {
     console.log('Отрисовка рулетки...');
     if (!elements.itemsTrack) return;
@@ -581,120 +623,32 @@ function renderRouletteItems() {
         
         elements.itemsTrack.appendChild(rouletteItem);
     });
-    
-    console.log('Рулетка отрисована:', rouletteItems.length, 'предметов');
 }
 
-// Открытие модального окна инвентаря
-function openInventoryModal() {
-    console.log('Открытие инвентаря');
-    renderInventory();
-    showModal(elements.inventoryModal);
-}
-
-// Просмотр предмета
-function viewItem(item) {
-    alert(`🎁 ${item.name}\n🎯 Редкость: ${getRarityText(item.rarity)}\n💎 Цена: ${item.price}\n📝 ${item.description}`);
-}
-
-// Открытие кейса
-async function openCase() {
-    console.log('Открытие кейса...');
-    if (!currentCase || !userData || isOpening) {
-        console.log('Не могу открыть кейс:', { currentCase, userData, isOpening });
-        return;
-    }
-    
-    if (userData.balance < currentCase.price) {
-        alert('❌ Недостаточно алмазов!');
-        return;
-    }
-    
-    console.log('Списываем средства...');
-    // Списание средств
-    userData.balance -= currentCase.price;
-    elements.balance.textContent = userData.balance.toLocaleString();
-    
-    // Синхронизация с сервером
-    await saveServerData();
-    
-    // Отключаем кнопку открытия
-    elements.openCaseBtn.disabled = true;
-    elements.openCaseBtn.innerHTML = '⏳ Открывается...';
-    
-    // Генерируем выигрышный предмет
-    const wonItem = generateWonItem(currentCase);
-    currentItem = wonItem;
-    console.log('Выигрышный предмет:', wonItem);
-    
-    // Запускаем рулетку
-    await startRouletteForCase(wonItem);
-}
-
-// Генерация выигрышного предмета
-function generateWonItem(caseItem) {
-    const totalWeight = Object.values(caseItem.rarityWeights).reduce((a, b) => a + b, 0);
-    let randomWeight = Math.random() * totalWeight;
-    
-    let selectedRarity = 'common';
-    for (const [rarity, weight] of Object.entries(caseItem.rarityWeights)) {
-        randomWeight -= weight;
-        if (randomWeight <= 0) {
-            selectedRarity = rarity;
-            break;
-        }
-    }
-    
-    // Фильтруем предметы по редкости
-    const itemsByRarity = {
-        common: minecraftItems.common,
-        uncommon: minecraftItems.uncommon,
-        rare: minecraftItems.rare,
-        epic: minecraftItems.epic,
-        legendary: minecraftItems.legendary
-    };
-    
-    const availableItems = itemsByRarity[selectedRarity] || minecraftItems.common;
-    const randomItem = {...availableItems[Math.floor(Math.random() * availableItems.length)]};
-    randomItem.rarity = selectedRarity;
-    
-    return randomItem;
-}
-
-// Запуск рулетки для кейса
+// Функции рулетки (без изменений)
 function startRouletteForCase(wonItem) {
     return new Promise((resolve) => {
         isOpening = true;
         isRouletteActive = true;
         
-        // Генерируем полную последовательность с выигрышным предметом в центре
         rouletteItems = generateFullRouletteSequence(wonItem);
-        
-        // Вычисляем индекс выигрышного предмета (должен быть в середине последовательности)
         winningItemIndex = Math.floor(rouletteItems.length / 2);
-        
-        // Убедимся что в центре именно выигрышный предмет
         rouletteItems[winningItemIndex] = {...wonItem};
         
         console.log('Выигрышный предмет в центре на позиции:', winningItemIndex);
         
-        // Отрисовываем предметы заново
         renderRouletteItems();
         
-        // Даем браузеру время на отрисовку
         setTimeout(() => {
-            // Запускаем анимацию
             startRouletteAnimation(resolve);
         }, 100);
     });
 }
 
-// Генерация полной последовательности для анимации
 function generateFullRouletteSequence(wonItem) {
     const sequence = [];
-    const sequenceLength = 50; // Длинная последовательность для плавной анимации
+    const sequenceLength = 50;
     
-    // Добавляем случайные предметы в начале
     for (let i = 0; i < sequenceLength / 2 - 5; i++) {
         const rarities = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
         const randomRarity = rarities[Math.floor(Math.random() * rarities.length)];
@@ -704,10 +658,8 @@ function generateFullRouletteSequence(wonItem) {
         sequence.push(randomItem);
     }
     
-    // Добавляем выигрышный предмет в середину
     sequence.push({...wonItem});
     
-    // Добавляем переходные предметы после выигрышного
     for (let i = 0; i < sequenceLength / 2 - 5; i++) {
         const rarities = ['common', 'uncommon', 'rare'];
         const randomRarity = rarities[Math.floor(Math.random() * rarities.length)];
@@ -720,113 +672,77 @@ function generateFullRouletteSequence(wonItem) {
     return sequence;
 }
 
-// Запуск анимации рулетки
 function startRouletteAnimation(resolve) {
     console.log('Запуск анимации рулетки');
     isScrolling = true;
     
     const rouletteContainer = elements.rouletteContainer;
-    if (!rouletteContainer) {
-        console.error('Контейнер рулетки не найден');
-        return;
-    }
+    if (!rouletteContainer) return;
     
     const containerWidth = rouletteContainer.clientWidth;
-    const itemWidth = 110; // 100px предмет + 10px gap
-    const trackWidth = itemWidth * rouletteItems.length;
-    
-    // Начальная позиция (первый предмет в центре)
+    const itemWidth = 110;
     const startPosition = (containerWidth / 2) - (itemWidth / 2);
-    
-    // Вычисляем финальную позицию так, чтобы выигрышный предмет оказался в центре
     const targetItemCenter = winningItemIndex * itemWidth + itemWidth / 2;
     const finalPosition = (containerWidth / 2) - targetItemCenter;
     
-    console.log('Анимационные параметры:', {
-        containerWidth,
-        itemWidth,
-        trackWidth,
-        startPosition,
-        finalPosition,
-        winningItemIndex,
-        targetItemCenter
-    });
-    
-    // Устанавливаем начальную позицию
     if (elements.itemsTrack) {
         elements.itemsTrack.style.transition = 'none';
         elements.itemsTrack.style.transform = `translateX(${startPosition}px)`;
     }
     
-    // Даем браузеру время на отрисовку
     setTimeout(() => {
         animationStartTime = Date.now();
-        
-        // Случайная длительность анимации: от 3000 до 5000ms для разнообразия
         const animationDuration = 3000 + Math.random() * 2000;
-        
-        // Запускаем анимацию
         animateRoulette(startPosition, finalPosition, animationDuration, resolve);
     }, 100);
 }
 
-// Анимация рулетки
 function animateRoulette(startPos, endPos, duration, resolve) {
     if (!isRouletteActive) return;
     
     const elapsed = Date.now() - animationStartTime;
     let progress = Math.min(elapsed / duration, 1);
     
-    // Разные фазы анимации для реалистичности
     let easedProgress;
     
     if (progress < 0.2) {
-        // Фаза 1: Медленный старт (0-20%)
         const phaseProgress = progress / 0.2;
         easedProgress = easeOutSine(phaseProgress) * 0.2;
     } else if (progress < 0.6) {
-        // Фаза 2: Средняя скорость (20-60%)
         const phaseProgress = (progress - 0.2) / 0.4;
         easedProgress = 0.2 + phaseProgress * 0.4;
     } else if (progress < 0.8) {
-        // Фаза 3: Быстрая скорость (60-80%)
         const phaseProgress = (progress - 0.6) / 0.2;
         easedProgress = 0.6 + easeOutCubic(phaseProgress) * 0.2;
     } else {
-        // Фаза 4: Замедление с отскоком (80-100%)
         const phaseProgress = (progress - 0.8) / 0.2;
         easedProgress = 0.8 + easeInOutBack(phaseProgress) * 0.2;
     }
     
-    // Плавное движение с замедлением в конце
     const currentPos = startPos + (endPos - startPos) * easedProgress;
     
     if (elements.itemsTrack) {
-        // В последней фазе используем более плавную анимацию
         if (progress > 0.85) {
             elements.itemsTrack.style.transition = 'transform 0.1s linear';
         }
         elements.itemsTrack.style.transform = `translateX(${currentPos}px)`;
     }
     
-    // Обновляем подсветку предметов
     updateCenterZoneItem();
     
     if (progress < 1) {
         requestAnimationFrame(() => animateRoulette(startPos, endPos, duration, resolve));
     } else {
-        // Завершение анимации
         finishRouletteAnimation(resolve);
     }
 }
 
-// Обновление подсветки предмета в центре
 function updateCenterZoneItem() {
     if (!elements.rouletteContainer || !elements.itemsTrack) return;
     
     const containerRect = elements.rouletteContainer.getBoundingClientRect();
     const centerX = containerRect.left + containerRect.width / 2;
-    const zoneWidth = 60; // Ширина зоны для определения центрального предмета
+    const zoneWidth = 60;
     
     const items = document.querySelectorAll('.roulette-item');
     let closestItem = null;
@@ -837,7 +753,6 @@ function updateCenterZoneItem() {
         const itemCenter = itemRect.left + itemRect.width / 2;
         const distanceToCenter = Math.abs(itemCenter - centerX);
         
-        // Снимаем подсветку
         item.classList.remove('highlighted');
         
         if (distanceToCenter < zoneWidth && distanceToCenter < closestDistance) {
@@ -846,30 +761,21 @@ function updateCenterZoneItem() {
         }
     });
     
-    // Подсвечиваем ближайший предмет к центру
     if (closestItem && closestDistance < zoneWidth) {
         closestItem.classList.add('highlighted');
     }
 }
 
-// Завершение анимации рулетки
 function finishRouletteAnimation(resolve) {
     console.log('Завершение анимации рулетки');
     isScrolling = false;
     
-    // Финальная корректировка позиции для точного центрирования
     setTimeout(() => {
-        // Добавляем анимацию выигрыша на центральном предмете
         const highlightedItem = document.querySelector('.roulette-item.highlighted');
         if (highlightedItem) {
             highlightedItem.classList.add('winning-spin');
             
-            // Получаем данные выигрышного предмета
-            const itemName = highlightedItem.querySelector('.roulette-item-name').textContent;
-            const itemIcon = highlightedItem.querySelector('.roulette-item-icon').textContent;
             const itemIndex = parseInt(highlightedItem.dataset.index);
-            
-            // Находим полные данные предмета
             const wonItemData = rouletteItems[itemIndex];
             
             if (wonItemData) {
@@ -877,21 +783,12 @@ function finishRouletteAnimation(resolve) {
                 
                 console.log('Выигрышный предмет:', currentItem);
                 
-                // Добавляем предмет в инвентарь
-                inventoryData.unshift({
-                    ...currentItem,
-                    obtained_at: new Date().toISOString()
-                });
+                // Сохраняем данные
+                saveDataToTelegram();
                 
-                // Сохраняем на сервере
-                saveServerData();
-                
-                // Показываем результат через 1.5 секунды
                 setTimeout(() => {
-                    // Скрываем модальное окно кейса
                     hideModal(elements.caseModal);
                     
-                    // Восстанавливаем кнопку для следующего открытия
                     if (userData.balance >= currentCase.price) {
                         elements.openCaseBtn.disabled = false;
                         elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${currentCase.price} 💎`;
@@ -900,29 +797,24 @@ function finishRouletteAnimation(resolve) {
                         elements.openCaseBtn.innerHTML = '❌ Недостаточно 💎';
                     }
                     
-                    // Показываем результат
                     showResult(currentItem);
                     isOpening = false;
                     isRouletteActive = false;
                     resolve();
                 }, 1500);
             } else {
-                console.error('Не удалось найти данные выигрышного предмета');
                 handleRouletteError(resolve);
             }
         } else {
-            console.error('Не найден подсвеченный предмет');
             handleRouletteError(resolve);
         }
     }, 500);
 }
 
-// Обработка ошибки рулетки
 function handleRouletteError(resolve) {
     setTimeout(() => {
         hideModal(elements.caseModal);
         
-        // Восстанавливаем кнопку
         if (userData.balance >= currentCase?.price) {
             elements.openCaseBtn.disabled = false;
             elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${currentCase?.price || 0} 💎`;
@@ -937,7 +829,6 @@ function handleRouletteError(resolve) {
     }, 1000);
 }
 
-// Показ результата
 function showResult(item) {
     console.log('Показ результата:', item);
     elements.resultItemName.textContent = item.name;
@@ -947,13 +838,10 @@ function showResult(item) {
     elements.resultItemIcon.textContent = item.icon;
     elements.newBalance.textContent = userData.balance.toLocaleString();
     
-    // Добавляем эффект частиц
     createParticles();
-    
     showModal(elements.resultModal);
 }
 
-// Создание частиц для эффекта
 function createParticles() {
     const particleContainer = document.querySelector('.particle-effect');
     if (!particleContainer) return;
@@ -997,7 +885,6 @@ function createParticles() {
     }
 }
 
-// Получение текста редкости
 function getRarityText(rarity) {
     const rarityMap = {
         'common': 'Обычный',
@@ -1009,25 +896,16 @@ function getRarityText(rarity) {
     return rarityMap[rarity] || rarity;
 }
 
-// Управление модальными окнами
 function showModal(modal) {
-    if (!modal) {
-        console.error('Модальное окно не найдено');
-        return;
-    }
+    if (!modal) return;
     modal.classList.add('active');
     document.body.style.overflow = 'hidden';
-    console.log('Показано модальное окно:', modal.id);
 }
 
 function hideModal(modal) {
-    if (!modal) {
-        console.error('Модальное окно не найдено');
-        return;
-    }
+    if (!modal) return;
     modal.classList.remove('active');
     document.body.style.overflow = 'auto';
-    console.log('Скрыто модальное окно:', modal.id);
 }
 
 function showLoading() {
@@ -1048,23 +926,30 @@ function hideLoading() {
     }
 }
 
+function openInventoryModal() {
+    console.log('Открытие инвентаря');
+    renderInventory();
+    showModal(elements.inventoryModal);
+}
+
+function viewItem(item) {
+    alert(`🎁 ${item.name}\n🎯 Редкость: ${getRarityText(item.rarity)}\n💎 Цена: ${item.price}\n📝 ${item.description}`);
+}
+
 // Инициализация обработчиков событий
 function initEventListeners() {
     console.log('Настройка обработчиков событий...');
     
     if (elements.inventoryBtn) {
         elements.inventoryBtn.addEventListener('click', openInventoryModal);
-        console.log('Кнопка инвентаря настроена');
     }
     
     if (elements.closeModal) {
         elements.closeModal.addEventListener('click', () => {
-            // Если рулетка активна, не закрываем
             if (isRouletteActive) {
                 if (confirm('Рулетка все еще активна. Вы уверены, что хотите отменить открытие?')) {
                     isRouletteActive = false;
                     hideModal(elements.caseModal);
-                    // Восстанавливаем кнопку
                     if (userData.balance >= currentCase?.price) {
                         elements.openCaseBtn.disabled = false;
                         elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${currentCase?.price || 0} 💎`;
@@ -1086,10 +971,8 @@ function initEventListeners() {
     
     if (elements.openCaseBtn) {
         elements.openCaseBtn.addEventListener('click', openCase);
-        console.log('Кнопка открытия кейса настроена');
     }
     
-    // Закрытие модальных окон по клику на overlay
     document.querySelectorAll('.modal-overlay').forEach(overlay => {
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay && !isOpening) {
@@ -1097,7 +980,6 @@ function initEventListeners() {
                     if (confirm('Рулетка все еще активна. Вы уверены, что хотите отменить открытие?')) {
                         isRouletteActive = false;
                         hideModal(elements.caseModal);
-                        // Восстанавливаем кнопку
                         if (userData.balance >= currentCase?.price) {
                             elements.openCaseBtn.disabled = false;
                             elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${currentCase?.price || 0} 💎`;
@@ -1109,43 +991,39 @@ function initEventListeners() {
             }
         });
     });
-    
-    console.log('Все обработчики настроены');
 }
 
-// Обновление баланса (вызывается из бота)
-function updateBalance(newBalance) {
-    userData.balance = newBalance;
-    elements.balance.textContent = userData.balance.toLocaleString();
-    console.log('Баланс обновлен:', userData.balance);
+// Обновление баланса в реальном времени
+function syncBalance() {
+    if (!tg || !tg.initDataUnsafe?.user?.id) return;
+    
+    setInterval(async () => {
+        try {
+            const response = await sendTelegramData({
+                action: 'sync_balance',
+                userId: tg.initDataUnsafe.user.id
+            });
+            
+            if (response && response.balance !== undefined && response.balance !== userData.balance) {
+                userData.balance = response.balance;
+                elements.balance.textContent = userData.balance.toLocaleString();
+                console.log('Баланс синхронизирован:', userData.balance);
+            }
+        } catch (error) {
+            console.log('Ошибка синхронизации баланса:', error);
+        }
+    }, 30000); // Каждые 30 секунд
 }
 
 // Инициализация при загрузке DOM
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM загружен, запускаем приложение...');
     
-    // Инициализация приложения
     initApp();
-    
-    // Настройка обработчиков событий
     initEventListeners();
     
-    // Периодическая синхронизация баланса
-    if (tg && tg.initDataUnsafe?.user?.id) {
-        setInterval(async () => {
-            try {
-                const response = await fetch(`/api/user/${tg.initDataUnsafe.user.id}/balance`);
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.balance !== userData.balance) {
-                        updateBalance(data.balance);
-                    }
-                }
-            } catch (error) {
-                console.log('Ошибка синхронизации баланса:', error);
-            }
-        }, 30000); // Синхронизация каждые 30 секунд
-    }
+    // Запускаем синхронизацию баланса
+    syncBalance();
     
     console.log('Приложение запущено');
 });

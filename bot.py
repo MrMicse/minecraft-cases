@@ -15,16 +15,14 @@ from aiogram.types import (
 from aiogram.filters import Command, CommandObject
 from aiogram.enums import ParseMode
 
-# Загрузка переменных окружения из .env файла
+# Загрузка переменных окружения
 load_dotenv()
 
-# Получение конфигурации из переменных окружения
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = int(os.getenv('ADMIN_ID', 0))
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 DB_PATH = os.getenv('DATABASE_URL', 'sqlite:///minecraft_cases.db').replace('sqlite:///', '')
 
-# Проверка наличия обязательных переменных
 if not BOT_TOKEN:
     raise ValueError("❌ BOT_TOKEN не найден в .env файле!")
 
@@ -38,14 +36,13 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # Таблица пользователей
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY,
         username TEXT,
         first_name TEXT,
         last_name TEXT,
-        balance INTEGER DEFAULT 10000,  -- Увеличено до 10000
+        balance INTEGER DEFAULT 10000,
         experience INTEGER DEFAULT 0,
         level INTEGER DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -53,7 +50,6 @@ def init_db():
     )
     ''')
     
-    # Таблица предметов Minecraft
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS items (
         item_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,7 +65,6 @@ def init_db():
     )
     ''')
     
-    # Таблица инвентаря
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS inventory (
         inventory_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,7 +78,6 @@ def init_db():
     )
     ''')
     
-    # Таблица кейсов
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS cases (
         case_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -91,14 +85,13 @@ def init_db():
         price INTEGER NOT NULL,
         icon TEXT NOT NULL,
         description TEXT,
-        rarity_weights TEXT NOT NULL, -- JSON с весами редкостей
+        rarity_weights TEXT NOT NULL,
         texture_url TEXT,
         is_active BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
     
-    # Таблица истории открытий
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS opening_history (
         history_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -112,7 +105,6 @@ def init_db():
     )
     ''')
     
-    # Таблица транзакций
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS transactions (
         transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -130,7 +122,7 @@ def init_db():
     # Сброс баланса всех пользователей до 10000
     cursor.execute("UPDATE users SET balance = 10000 WHERE balance != 10000")
     
-    # Добавляем тестовые данные только если таблицы пустые
+    # Добавляем начальные данные
     cursor.execute("SELECT COUNT(*) FROM items")
     if cursor.fetchone()[0] == 0:
         add_initial_data(cursor)
@@ -138,53 +130,33 @@ def init_db():
     conn.commit()
     conn.close()
     print(f"✅ База данных инициализирована: {DB_PATH}")
-    print(f"💰 Баланс всех пользователей сброшен до 10000")
+    print(f"💰 Баланс всех пользователей установлен на 10000")
 
 def add_initial_data(cursor):
-    """Добавление начальных данных в БД"""
+    """Добавление начальных данных"""
     print("📦 Добавление начальных данных...")
     
-    # Minecraft предметы
+    # Предметы Minecraft
     minecraft_items = [
-        # Common - Еда
         ("Яблоко", "🍎", "common", "food", 40, 20, "Восстанавливает 2 единицы голода", "apple.png"),
         ("Хлеб", "🍞", "common", "food", 45, 22, "Восстанавливает 5 единиц голода", "bread.png"),
         ("Мясо", "🍖", "common", "food", 50, 25, "Восстанавливает 8 единиц голода", "meat.png"),
-        ("Тыквенный пирог", "🥧", "common", "food", 60, 30, "Восстанавливает 8 единицы голода", "pie.png"),
-        ("Золотое яблоко", "🍏", "uncommon", "food", 400, 200, "Даёт регенерацию здоровья", "golden_apple.png"),
-        
-        # Common - Ресурсы
         ("Уголь", "⚫", "common", "resources", 30, 15, "Топливо и краситель", "coal.png"),
         ("Железный слиток", "⛓️", "common", "resources", 50, 25, "Базовый ресурс для крафта", "iron.png"),
         ("Золотой слиток", "🟨", "common", "resources", 80, 40, "Редкий ресурс", "gold.png"),
-        ("Красная пыль", "🔴", "common", "resources", 40, 20, "Для механизмов и зелий", "redstone.png"),
-        
-        # Uncommon
         ("Алмаз", "💎", "uncommon", "resources", 150, 75, "Ценный минерал", "diamond.png"),
         ("Изумруд", "🟩", "uncommon", "resources", 200, 100, "Торговая валюта", "emerald.png"),
-        ("Лазурит", "🔵", "uncommon", "resources", 100, 50, "Для зачарования", "lapis.png"),
-        
-        # Uncommon - Оружие
         ("Железный меч", "⚔️", "uncommon", "weapons", 180, 90, "Базовое оружие", "iron_sword.png"),
         ("Лук", "🏹", "uncommon", "weapons", 120, 60, "Дальнобойное оружие", "bow.png"),
-        ("Щит", "🛡️", "uncommon", "weapons", 150, 75, "Защита от атак", "shield.png"),
-        
-        # Rare
         ("Алмазный меч", "⚔️💎", "rare", "weapons", 250, 125, "Мощное оружие", "diamond_sword.png"),
         ("Алмазная кирка", "⛏️💎", "rare", "tools", 300, 150, "Быстрая добыча", "diamond_pickaxe.png"),
         ("Незеритовый слиток", "🔱", "rare", "resources", 500, 250, "Элитный материал", "netherite.png"),
         ("Элитра", "🧥", "rare", "special", 800, 400, "Позволяет летать", "elytra.png"),
-        
-        # Epic
         ("Тотем бессмертия", "🐦", "epic", "special", 1000, 500, "Спасение от смерти", "totem.png"),
         ("Сердце моря", "💙", "epic", "resources", 1200, 600, "Редкая реликвия", "heart.png"),
-        ("Голова дракона", "🐲", "epic", "special", 1500, 750, "Трофей дракона", "dragon_head.png"),
-        
-        # Legendary
         ("Командный блок", "🟪", "legendary", "special", 5000, 2500, "Божественный предмет", "command_block.png"),
         ("Меч незера", "🗡️", "legendary", "weapons", 3000, 1500, "Легендарное оружие", "netherite_sword.png"),
         ("Корона власти", "👑", "legendary", "special", 10000, 5000, "Знак абсолютной власти", "crown.png"),
-        ("Броня незера", "🛡️🔥", "legendary", "weapons", 4000, 2000, "Неуязвимая защита", "netherite_armor.png"),
     ]
     
     cursor.executemany(
@@ -237,7 +209,6 @@ def get_user(user_id: int) -> Dict:
         )
         conn.commit()
         
-        # Создаем начальную транзакцию
         cursor.execute(
             """INSERT INTO transactions (user_id, type, amount, description) 
                VALUES (?, 'reward', 10000, 'Стартовый бонус')""",
@@ -365,7 +336,7 @@ def open_case(user_id: int, case_id: int) -> Dict:
     case_price, rarity_weights_json = case_data
     rarity_weights = json.loads(rarity_weights_json)
     
-    # Получаем предметы по редкости
+    # Выбираем редкость
     total_weight = sum(rarity_weights.values())
     random_value = random.uniform(0, total_weight)
     
@@ -377,7 +348,7 @@ def open_case(user_id: int, case_id: int) -> Dict:
             selected_rarity = rarity
             break
     
-    # Получаем случайный предмет выбранной редкости
+    # Выбираем случайный предмет
     cursor.execute(
         """SELECT item_id, name, icon, rarity, price, description, texture_url 
            FROM items WHERE rarity = ? ORDER BY RANDOM() LIMIT 1""",
@@ -420,7 +391,7 @@ def open_case(user_id: int, case_id: int) -> Dict:
         (user_id, item["item_id"])
     )
     
-    # Добавляем в историю открытий
+    # Добавляем в историю
     cursor.execute(
         """INSERT INTO opening_history (user_id, case_id, item_id) 
            VALUES (?, ?, ?)""",
@@ -445,390 +416,15 @@ def open_case(user_id: int, case_id: int) -> Dict:
         "case_price": case_price
     }
 
-# Админ команды для управления балансом
-@router.message(Command("setbalance"))
-async def cmd_set_balance(message: Message, command: CommandObject):
-    """Установка баланса пользователю (админ команда)"""
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ У вас нет прав администратора!")
-        return
-    
-    if not command.args:
-        await message.answer("❌ Использование: /setbalance <user_id> <amount>")
-        return
-    
-    try:
-        args = command.args.split()
-        if len(args) != 2:
-            await message.answer("❌ Использование: /setbalance <user_id> <amount>")
-            return
-        
-        user_id = int(args[0])
-        amount = int(args[1])
-        
-        # Проверяем существование пользователя
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
-        if not cursor.fetchone():
-            conn.close()
-            await message.answer("❌ Пользователь не найден!")
-            return
-        
-        # Устанавливаем баланс
-        cursor.execute("UPDATE users SET balance = ? WHERE user_id = ?", (amount, user_id))
-        
-        # Записываем транзакцию
-        cursor.execute(
-            """INSERT INTO transactions (user_id, type, amount, description) 
-               VALUES (?, 'admin', ?, ?)""",
-            (user_id, amount - cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,)).fetchone()[0], 
-             f"Админская установка баланса от {message.from_user.id}")
-        )
-        
-        conn.commit()
-        
-        # Получаем имя пользователя
-        cursor.execute("SELECT first_name, username FROM users WHERE user_id = ?", (user_id,))
-        user_info = cursor.fetchone()
-        username = f"@{user_info[1]}" if user_info[1] else user_info[0]
-        
-        conn.close()
-        
-        await message.answer(f"✅ Баланс пользователя {username} (ID: {user_id}) установлен на {amount} 💎")
-        
-    except ValueError:
-        await message.answer("❌ Неверный формат аргументов!")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {str(e)}")
-
-@router.message(Command("addbalance"))
-async def cmd_add_balance(message: Message, command: CommandObject):
-    """Добавление баланса пользователю (админ команда)"""
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ У вас нет прав администратора!")
-        return
-    
-    if not command.args:
-        await message.answer("❌ Использование: /addbalance <user_id> <amount>")
-        return
-    
-    try:
-        args = command.args.split()
-        if len(args) != 2:
-            await message.answer("❌ Использование: /addbalance <user_id> <amount>")
-            return
-        
-        user_id = int(args[0])
-        amount = int(args[1])
-        
-        new_balance = update_balance(
-            user_id, amount, "admin", 
-            f"Админское пополнение от {message.from_user.id}"
-        )
-        
-        # Получаем информацию о пользователе
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT first_name, username FROM users WHERE user_id = ?", (user_id,))
-        user_info = cursor.fetchone()
-        username = f"@{user_info[1]}" if user_info[1] else user_info[0]
-        conn.close()
-        
-        await message.answer(f"✅ Пользователю {username} добавлено {amount} 💎\nНовый баланс: {new_balance} 💎")
-        
-    except ValueError:
-        await message.answer("❌ Неверный формат аргументов!")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {str(e)}")
-
-@router.message(Command("resetbalance"))
-async def cmd_reset_balance(message: Message, command: CommandObject = None):
-    """Сброс баланса пользователя до 10000 (админ команда)"""
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ У вас нет прав администратора!")
-        return
-    
-    try:
-        if command and command.args:
-            # Сброс баланса конкретного пользователя
-            user_id = int(command.args)
-            
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            
-            # Получаем текущий баланс
-            cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-            current_balance = cursor.fetchone()
-            
-            if not current_balance:
-                conn.close()
-                await message.answer("❌ Пользователь не найден!")
-                return
-            
-            current_balance = current_balance[0]
-            
-            # Устанавливаем баланс на 10000
-            cursor.execute("UPDATE users SET balance = 10000 WHERE user_id = ?", (user_id,))
-            
-            # Записываем транзакцию
-            cursor.execute(
-                """INSERT INTO transactions (user_id, type, amount, description) 
-                   VALUES (?, 'admin', ?, ?)""",
-                (user_id, 10000 - current_balance, "Сброс баланса администратором")
-            )
-            
-            conn.commit()
-            
-            # Получаем имя пользователя
-            cursor.execute("SELECT first_name, username FROM users WHERE user_id = ?", (user_id,))
-            user_info = cursor.fetchone()
-            username = f"@{user_info[1]}" if user_info[1] else user_info[0]
-            
-            conn.close()
-            
-            await message.answer(f"✅ Баланс пользователя {username} (ID: {user_id}) сброшен до 10000 💎")
-            
-        else:
-            # Сброс баланса всем пользователям
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            
-            # Получаем количество пользователей
-            cursor.execute("SELECT COUNT(*) FROM users")
-            user_count = cursor.fetchone()[0]
-            
-            # Сбрасываем баланс всем пользователям
-            cursor.execute("UPDATE users SET balance = 10000")
-            
-            # Записываем транзакции для всех пользователей
-            cursor.execute("SELECT user_id FROM users")
-            user_ids = cursor.fetchall()
-            
-            for user_id in user_ids:
-                cursor.execute(
-                    """INSERT INTO transactions (user_id, type, amount, description) 
-                       VALUES (?, 'admin', ?, ?)""",
-                    (user_id[0], 10000, "Массовый сброс баланса")
-                )
-            
-            conn.commit()
-            conn.close()
-            
-            await message.answer(f"✅ Баланс всех {user_count} пользователей сброшен до 10000 💎")
-            
-    except ValueError:
-        await message.answer("❌ Неверный формат user_id!")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {str(e)}")
-
-@router.message(Command("checkbalance"))
-async def cmd_check_balance(message: Message, command: CommandObject = None):
-    """Проверка баланса пользователя (админ команда)"""
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ У вас нет прав администратора!")
-        return
-    
-    try:
-        if command and command.args:
-            # Проверка баланса конкретного пользователя
-            user_id = int(command.args)
-            
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            
-            cursor.execute(
-                """SELECT user_id, first_name, username, balance, experience, level 
-                   FROM users WHERE user_id = ?""",
-                (user_id,)
-            )
-            
-            user_data = cursor.fetchone()
-            conn.close()
-            
-            if not user_data:
-                await message.answer("❌ Пользователь не найден!")
-                return
-            
-            username = f"@{user_data[2]}" if user_data[2] else user_data[1]
-            
-            text = f"""
-👤 <b>Информация о пользователе</b>
-
-📛 <b>Имя:</b> {user_data[1]}
-👤 <b>Юзернейм:</b> {username}
-🆔 <b>ID:</b> <code>{user_data[0]}</code>
-
-💰 <b>Баланс:</b> {user_data[3]} 💎
-🎮 <b>Уровень:</b> {user_data[5]}
-⭐ <b>Опыт:</b> {user_data[4]} / {user_data[5] * 1000}
-            """
-            
-            await message.answer(text, parse_mode=ParseMode.HTML)
-            
-        else:
-            # Проверка баланса отправителя команды
-            user = get_user(message.from_user.id)
-            await message.answer(f"💰 Ваш баланс: {user['balance']} 💎")
-            
-    except ValueError:
-        await message.answer("❌ Неверный формат user_id!")
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {str(e)}")
-
-# API эндпоинты для веб-приложения
-@router.message(F.web_app_data)
-async def handle_web_app_data(message: Message):
-    """Обработка данных из Web App"""
-    try:
-        print(f"🌐 Получены данные из Web App от пользователя {message.from_user.id}")
-        data = json.loads(message.web_app_data.data)
-        user_id = message.from_user.id
-        
-        if data.get('action') == 'init':
-            # Инициализация приложения
-            user = get_user(user_id)
-            inventory = get_inventory(user_id)
-            cases = get_cases()
-            
-            response = {
-                'success': True,
-                'user': user,
-                'inventory': inventory,
-                'cases': cases,
-                'config': {
-                    'min_bet': 10,
-                    'max_bet': 10000,
-                    'daily_bonus': 100,
-                    'version': '1.0.0'
-                }
-            }
-            
-            await message.answer(json.dumps(response))
-            print(f"📤 Отправлены данные инициализации пользователю {user_id}")
-            
-        elif data.get('action') == 'open_case':
-            # Открытие кейса
-            case_id = data.get('case_id')
-            print(f"🎰 Пользователь {user_id} открывает кейс {case_id}")
-            
-            result = open_case(user_id, case_id)
-            
-            if 'error' in result:
-                print(f"❌ Ошибка при открытии кейса: {result['error']}")
-                await message.answer(json.dumps({'error': result['error']}))
-                return
-            
-            # Отправляем уведомление для редких предметов
-            if result['item']['rarity'] in ['epic', 'legendary']:
-                notification = f"""
-🎉 <b>УДАЧА В КЕЙСАХ!</b>
-
-{message.from_user.first_name} получил предмет <b>{result['item']['rarity']}</b> редкости:
-
-🏆 <b>{result['item']['name']}</b> {result['item']['icon']}
-💰 <b>Стоимость:</b> {result['item']['price']} 💎
-
-Поздравляем! 🎊
-                """
-                await message.answer(notification, parse_mode=ParseMode.HTML)
-                print(f"🎉 Пользователь {user_id} получил редкий предмет: {result['item']['name']}")
-            
-            await message.answer(json.dumps(result))
-            print(f"📤 Отправлен результат открытия кейса пользователю {user_id}")
-            
-        elif data.get('action') == 'sell_item':
-            # Продажа предмета
-            item_id = data.get('item_id')
-            print(f"💰 Пользователь {user_id} продает предмет {item_id}")
-            
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            
-            # Получаем цену предмета
-            cursor.execute("SELECT sell_price FROM items WHERE item_id = ?", (item_id,))
-            item_data = cursor.fetchone()
-            
-            if not item_data:
-                await message.answer(json.dumps({'error': 'Предмет не найден'}))
-                conn.close()
-                return
-            
-            # Удаляем предмет из инвентаря
-            cursor.execute(
-                "DELETE FROM inventory WHERE user_id = ? AND item_id = ? LIMIT 1",
-                (user_id, item_id)
-            )
-            
-            # Добавляем деньги
-            sell_price = item_data[0]
-            new_balance = update_balance(
-                user_id, sell_price, "reward", f"Продажа предмета {item_id}"
-            )
-            
-            response = {
-                'success': True,
-                'sell_price': sell_price,
-                'new_balance': new_balance
-            }
-            
-            await message.answer(json.dumps(response))
-            conn.commit()
-            conn.close()
-            print(f"💰 Пользователь {user_id} продал предмет за {sell_price} 💎")
-            
-        elif data.get('action') == 'sync_balance':
-            # Синхронизация баланса
-            user = get_user(user_id)
-            response = {
-                'success': True,
-                'balance': user['balance']
-            }
-            await message.answer(json.dumps(response))
-            print(f"🔄 Синхронизирован баланс пользователя {user_id}: {user['balance']} 💎")
-            
-        elif data.get('action') == 'save_data':
-            # Сохранение данных
-            balance = data.get('balance', 10000)
-            inventory = data.get('inventory', [])
-            
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            
-            # Обновляем баланс
-            cursor.execute("UPDATE users SET balance = ? WHERE user_id = ?", (balance, user_id))
-            
-            # Очищаем старый инвентарь и добавляем новый
-            cursor.execute("DELETE FROM inventory WHERE user_id = ?", (user_id,))
-            
-            # Здесь можно добавить логику для сохранения инвентаря
-            # Но обычно инвентарь хранится в базе данных бота
-            
-            conn.commit()
-            conn.close()
-            
-            response = {'success': True}
-            await message.answer(json.dumps(response))
-            print(f"💾 Данные пользователя {user_id} сохранены (баланс: {balance})")
-            
-    except Exception as e:
-        print(f"❌ Ошибка обработки Web App данных: {e}")
-        if DEBUG:
-            error_msg = str(e)
-        else:
-            error_msg = "Произошла ошибка. Пожалуйста, попробуйте позже."
-        
-        await message.answer(json.dumps({'error': error_msg}))
-
-# Команды для пользователей
+# Основные команды
 @router.message(Command("start"))
 async def cmd_start(message: Message):
     """Команда /start"""
-    print(f"📥 Получена команда /start от пользователя {message.from_user.id}")
+    print(f"📥 /start от {message.from_user.id}")
     
     user = get_user(message.from_user.id)
     
-    # Обновляем время последнего входа
+    # Обновляем время входа
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute(
@@ -857,16 +453,6 @@ async def cmd_start(message: Message):
         ]
     )
     
-    # Получаем статистику открытий
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT COUNT(*) FROM opening_history WHERE user_id = ?",
-        (user["user_id"],)
-    )
-    cases_opened = cursor.fetchone()[0]
-    conn.close()
-    
     text = f"""
 ⛏️ <b>Добро пожаловать в Minecraft Case Opening, {message.from_user.first_name}!</b>
 
@@ -875,19 +461,14 @@ async def cmd_start(message: Message):
 ⭐ <b>Опыт:</b> {user['experience']} XP
 
 🎁 <b>Ежедневный бонус:</b> 100 💎 (/daily)
-🏆 <b>Открыто кейсов:</b> {cases_opened} (/stats)
-
 <code>Начни открывать кейсы и собери свою коллекцию!</code>
     """
     
     await message.answer(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
-    print(f"📤 Отправлен ответ пользователю {message.from_user.id}")
 
 @router.message(Command("daily"))
 async def cmd_daily(message: Message):
     """Ежедневный бонус"""
-    print(f"📥 Получена команда /daily от пользователя {message.from_user.id}")
-    
     user_id = message.from_user.id
     user = get_user(user_id)
     
@@ -905,7 +486,6 @@ async def cmd_daily(message: Message):
     last_daily = cursor.fetchone()
     
     if last_daily:
-        # SQLite возвращает строку, преобразуем в datetime
         last_date = datetime.strptime(last_daily[0], '%Y-%m-%d %H:%M:%S')
         if last_date.date() == datetime.now().date():
             await message.answer("🎁 Вы уже получали ежедневный бонус сегодня!")
@@ -929,13 +509,10 @@ async def cmd_daily(message: Message):
     
     await message.answer(text, parse_mode=ParseMode.HTML)
     conn.close()
-    print(f"📤 Начислен ежедневный бонус пользователю {user_id}")
 
 @router.message(Command("balance"))
 async def cmd_balance(message: Message):
     """Проверка баланса"""
-    print(f"📥 Получена команда /balance от пользователя {message.from_user.id}")
-    
     user = get_user(message.from_user.id)
     inventory = get_inventory(user["user_id"])
     
@@ -951,65 +528,158 @@ async def cmd_balance(message: Message):
     """
     
     await message.answer(text, parse_mode=ParseMode.HTML)
-    print(f"📤 Отправлена статистика пользователю {message.from_user.id}")
 
-@router.message(Command("help"))
-async def cmd_help(message: Message):
-    """Справка по командам"""
-    print(f"📥 Получена команда /help от пользователя {message.from_user.id}")
+# Админ команды
+@router.message(Command("setbalance"))
+async def cmd_set_balance(message: Message, command: CommandObject):
+    """Установка баланса"""
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Нет прав!")
+        return
     
-    text = """
-⛏️ <b>Minecraft Case Bot - Помощь</b>
-
-<b>Основные команды:</b>
-/start - Запустить бота и открыть меню
-/help - Показать эту справку
-/balance - Показать баланс и статистику
-/daily - Получить ежедневный бонус (100 💎)
-/inventory - Посмотреть инвентарь
-/cases - Посмотреть доступные кейсы
-
-<b>Для админов:</b>
-/admin - Админ панель
-/setbalance <user_id> <amount> - Установить баланс
-/addbalance <user_id> <amount> - Добавить баланс
-/resetbalance [user_id] - Сбросить баланс (всем или конкретному)
-/checkbalance [user_id] - Проверить баланс
-
-<b>Как играть:</b>
-1. Нажмите кнопку "Открыть Minecraft Кейсы"
-2. Выберите кейс в веб-приложении
-3. Откройте кейс и получите предмет
-4. Собирайте коллекцию и повышайте уровень!
-
-<b>Редкости предметов:</b>
-⚪ Обычный - 70% шанс
-🟢 Необычный - 20% шанс
-🔵 Редкий - 7% шанс
-🟣 Эпический - 2.5% шанс
-🟡 Легендарный - 0.5% шанс
-    """
+    if not command.args:
+        await message.answer("❌ Использование: /setbalance <user_id> <amount>")
+        return
     
-    await message.answer(text, parse_mode=ParseMode.HTML)
+    try:
+        args = command.args.split()
+        if len(args) != 2:
+            await message.answer("❌ Использование: /setbalance <user_id> <amount>")
+            return
+        
+        user_id = int(args[0])
+        amount = int(args[1])
+        
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
+        if not cursor.fetchone():
+            conn.close()
+            await message.answer("❌ Пользователь не найден!")
+            return
+        
+        cursor.execute("UPDATE users SET balance = ? WHERE user_id = ?", (amount, user_id))
+        
+        cursor.execute(
+            """INSERT INTO transactions (user_id, type, amount, description) 
+               VALUES (?, 'admin', ?, ?)""",
+            (user_id, amount, f"Админская установка баланса")
+        )
+        
+        conn.commit()
+        conn.close()
+        
+        await message.answer(f"✅ Баланс пользователя ID: {user_id} установлен на {amount} 💎")
+        
+    except ValueError:
+        await message.answer("❌ Неверный формат!")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {str(e)}")
+
+@router.message(Command("addbalance"))
+async def cmd_add_balance(message: Message, command: CommandObject):
+    """Добавление баланса"""
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Нет прав!")
+        return
+    
+    if not command.args:
+        await message.answer("❌ Использование: /addbalance <user_id> <amount>")
+        return
+    
+    try:
+        args = command.args.split()
+        if len(args) != 2:
+            await message.answer("❌ Использование: /addbalance <user_id> <amount>")
+            return
+        
+        user_id = int(args[0])
+        amount = int(args[1])
+        
+        new_balance = update_balance(
+            user_id, amount, "admin", 
+            f"Админское пополнение"
+        )
+        
+        await message.answer(f"✅ Пользователю ID: {user_id} добавлено {amount} 💎\nНовый баланс: {new_balance} 💎")
+        
+    except ValueError:
+        await message.answer("❌ Неверный формат!")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {str(e)}")
+
+@router.message(Command("resetbalance"))
+async def cmd_reset_balance(message: Message, command: CommandObject = None):
+    """Сброс баланса"""
+    if message.from_user.id != ADMIN_ID:
+        await message.answer("⛔ Нет прав!")
+        return
+    
+    try:
+        if command and command.args:
+            # Сброс конкретному пользователю
+            user_id = int(command.args)
+            
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+            current_balance = cursor.fetchone()
+            
+            if not current_balance:
+                conn.close()
+                await message.answer("❌ Пользователь не найден!")
+                return
+            
+            cursor.execute("UPDATE users SET balance = 10000 WHERE user_id = ?", (user_id,))
+            
+            cursor.execute(
+                """INSERT INTO transactions (user_id, type, amount, description) 
+                   VALUES (?, 'admin', ?, ?)""",
+                (user_id, 10000 - current_balance[0], "Сброс баланса")
+            )
+            
+            conn.commit()
+            conn.close()
+            
+            await message.answer(f"✅ Баланс пользователя ID: {user_id} сброшен до 10000 💎")
+            
+        else:
+            # Сброс всем пользователям
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT COUNT(*) FROM users")
+            user_count = cursor.fetchone()[0]
+            
+            cursor.execute("UPDATE users SET balance = 10000")
+            
+            cursor.execute("SELECT user_id FROM users")
+            user_ids = cursor.fetchall()
+            
+            for user_id in user_ids:
+                cursor.execute(
+                    """INSERT INTO transactions (user_id, type, amount, description) 
+                       VALUES (?, 'admin', ?, ?)""",
+                    (user_id[0], 10000, "Массовый сброс баланса")
+                )
+            
+            conn.commit()
+            conn.close()
+            
+            await message.answer(f"✅ Баланс всех {user_count} пользователей сброшен до 10000 💎")
+            
+    except ValueError:
+        await message.answer("❌ Неверный формат!")
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {str(e)}")
 
 @router.message(Command("admin"))
 async def cmd_admin(message: Message):
     """Админ панель"""
-    print(f"📥 Получена команда /admin от пользователя {message.from_user.id}")
-    
     if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ У вас нет прав администратора!")
+        await message.answer("⛔ Нет прав!")
         return
-    
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats")],
-            [InlineKeyboardButton(text="👥 Пользователи", callback_data="admin_users")],
-            [InlineKeyboardButton(text="💰 Управление балансом", callback_data="admin_balance")],
-            [InlineKeyboardButton(text="🎁 Добавить предмет", callback_data="admin_add_item")],
-            [InlineKeyboardButton(text="📦 Добавить кейс", callback_data="admin_add_case")],
-        ]
-    )
     
     text = """
 👑 <b>Админ панель</b>
@@ -1018,65 +688,107 @@ async def cmd_admin(message: Message):
 /setbalance <user_id> <amount> - Установить точный баланс
 /addbalance <user_id> <amount> - Добавить к балансу
 /resetbalance [user_id] - Сбросить баланс до 10000
-/checkbalance [user_id] - Проверить баланс
-    """
-    
-    await message.answer(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
-
-@router.callback_query(F.data == "admin_balance")
-async def admin_balance_panel(callback: CallbackQuery):
-    """Панель управления балансом"""
-    if callback.from_user.id != ADMIN_ID:
-        await callback.answer("⛔ Нет прав!", show_alert=True)
-        return
-    
-    text = """
-💰 <b>Панель управления балансом</b>
-
-<b>Команды:</b>
-/setbalance <user_id> <amount> - Установить точный баланс
-/addbalance <user_id> <amount> - Добавить к балансу
-/resetbalance [user_id] - Сбросить баланс до 10000
-/checkbalance [user_id] - Проверить баланс
 
 <b>Примеры:</b>
-<code>/setbalance 123456789 50000</code> - Установить баланс 50000
-<code>/addbalance 123456789 1000</code> - Добавить 1000 к балансу
-<code>/resetbalance 123456789</code> - Сбросить баланс до 10000
-<code>/resetbalance</code> - Сбросить баланс всем пользователям
-<code>/checkbalance 123456789</code> - Проверить баланс пользователя
+<code>/setbalance 123456789 50000</code>
+<code>/addbalance 123456789 1000</code>
+<code>/resetbalance 123456789</code>
+<code>/resetbalance</code> - сбросить всем
     """
     
-    await callback.message.edit_text(text, parse_mode=ParseMode.HTML)
-    await callback.answer()
+    await message.answer(text, parse_mode=ParseMode.HTML)
+
+# Обработка данных из Web App
+@router.message(F.web_app_data)
+async def handle_web_app_data(message: Message):
+    """Обработка данных из мини-приложения"""
+    try:
+        print(f"🌐 Данные от {message.from_user.id}")
+        data = json.loads(message.web_app_data.data)
+        user_id = message.from_user.id
+        
+        if data.get('action') == 'init':
+            # Инициализация
+            user = get_user(user_id)
+            inventory = get_inventory(user_id)
+            cases = get_cases()
+            
+            response = {
+                'success': True,
+                'user': user,
+                'inventory': inventory,
+                'cases': cases
+            }
+            
+            await message.answer(json.dumps(response))
+            
+        elif data.get('action') == 'open_case':
+            # Открытие кейса
+            case_id = data.get('case_id')
+            print(f"🎰 {user_id} открывает кейс {case_id}")
+            
+            result = open_case(user_id, case_id)
+            
+            if 'error' in result:
+                await message.answer(json.dumps({'error': result['error']}))
+                return
+            
+            # Уведомление для редких предметов
+            if result['item']['rarity'] in ['epic', 'legendary']:
+                notification = f"""
+🎉 <b>УДАЧА В КЕЙСАХ!</b>
+
+{message.from_user.first_name} получил предмет <b>{result['item']['rarity']}</b> редкости:
+
+🏆 <b>{result['item']['name']}</b> {result['item']['icon']}
+💰 <b>Стоимость:</b> {result['item']['price']} 💎
+
+Поздравляем! 🎊
+                """
+                await message.answer(notification, parse_mode=ParseMode.HTML)
+            
+            await message.answer(json.dumps(result))
+            
+        elif data.get('action') == 'save_data':
+            # Сохранение данных
+            balance = data.get('balance', 10000)
+            
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("UPDATE users SET balance = ? WHERE user_id = ?", (balance, user_id))
+            conn.commit()
+            conn.close()
+            
+            await message.answer(json.dumps({'success': True}))
+            
+        elif data.get('action') == 'sync_balance':
+            # Синхронизация баланса
+            user = get_user(user_id)
+            await message.answer(json.dumps({'balance': user['balance']}))
+            
+    except Exception as e:
+        print(f"❌ Ошибка: {e}")
+        await message.answer(json.dumps({'error': 'Ошибка сервера'}))
+
+@router.message()
+async def handle_unknown(message: Message):
+    """Обработка неизвестных сообщений"""
+    await message.answer("🤔 Не понимаю. Используйте /help")
 
 async def main():
-    """Основная функция запуска бота"""
-    # Инициализация базы данных
+    """Запуск бота"""
     init_db()
     
     print("=" * 50)
     print("🎮 Minecraft Case Opening Bot")
-    print(f"🤖 Токен: {'*' * len(BOT_TOKEN[:10])}...")
-    print(f"👑 Админ ID: {ADMIN_ID}")
-    print(f"🐛 Режим отладки: {DEBUG}")
-    print(f"🗄️ База данных: {DB_PATH}")
     print(f"💰 Начальный баланс: 10000 💎")
-    print("=" * 50)
-    print("✅ Бот успешно запущен!")
-    print("⛏️ Ожидание команд...")
+    print("✅ Бот запущен!")
     print("=" * 50)
     
     try:
         await dp.start_polling(bot)
     except Exception as e:
-        print(f"❌ Ошибка при запуске бота: {e}")
-        raise
+        print(f"❌ Ошибка: {e}")
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\n🛑 Бот остановлен пользователем")
-    except Exception as e:
-        print(f"❌ Ошибка при запуске бота: {e}")
+    asyncio.run(main())
