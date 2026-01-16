@@ -4,7 +4,7 @@ import json
 import sqlite3
 from datetime import datetime
 from typing import Dict, List
-from admin_panel import admin_router
+from admin_panel import setup_admin_panel
 import random
 from dotenv import load_dotenv
 
@@ -857,7 +857,8 @@ async def main():
     """Основная функция запуска бота"""
     # Инициализация базы данных
     init_db()
-    dp.include_router(admin_router)
+    # Настройка админ-панели
+    setup_admin_panel(DB_PATH, dp)
     
     print("=" * 50)
     print("🎮 Minecraft Case Opening Bot")
