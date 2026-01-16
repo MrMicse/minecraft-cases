@@ -39,24 +39,17 @@
                     <button class="close-modal" id="close-modal">&times;</button>
                 </div>
                 <div class="modal-body">
-                    <!-- Контейнер для рулетки (скрыт по умолчанию) -->
+                    <!-- Рулетка всегда видна -->
                     <div class="roulette-container" id="roulette-container">
-                        <div class="roulette-wheel">
+                        <div class="roulette-wheel-wrapper">
                             <div class="center-indicator">
                                 <div class="indicator-arrow">▼</div>
                                 <div class="indicator-line"></div>
                             </div>
+                            <!-- Визуальная зона для понимания где может остановиться -->
+                            <div class="center-zone"></div>
                             <div class="items-track" id="items-track">
                                 <!-- Предметы будут добавлены через JS -->
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Контейнер для превью кейса (показывается по умолчанию) -->
-                    <div class="case-preview-section" id="case-preview-section">
-                        <div class="case-3d-container">
-                            <div class="case-preview">
-                                <div class="case-preview-icon" id="case-preview-icon">🎁</div>
                             </div>
                         </div>
                     </div>

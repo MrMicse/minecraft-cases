@@ -463,7 +463,7 @@ async def cmd_start(message: Message):
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="⛏️ Открыть Minecraft Кейсы",
+                    text="⛏️ Открыть Minecraаft Кейсы",
                     web_app=WebAppInfo(url="https://mrmicse.github.io/minecraft-cases/")
                 )
             ],
