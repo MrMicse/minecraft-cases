@@ -457,7 +457,7 @@ async def cmd_start(message: Message):
             [
                 InlineKeyboardButton(
                     text="⛏️ Открыть Minecraft Кейсы",
-                    web_app=WebAppInfo(url="https://your-web-app-url.com")  # Замените на ваш URL
+                    web_app=WebAppInfo(url="https://mrmicse.github.io/minecraft-cases/")  # Замените на ваш URL
                 )
             ],
             [
