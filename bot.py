@@ -15,7 +15,7 @@ from aiogram.types import (
 )
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 
 # Загрузка переменных окружения из .env файла
 load_dotenv()
@@ -34,6 +34,9 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 router = Router()
 dp.include_router(router)
+
+# Хранилище для сообщений пользователей
+user_messages = {}
 
 def init_db():
     """Инициализация базы данных"""
@@ -517,27 +520,103 @@ def get_user_full_data(user_id: int) -> Dict:
         "cases": cases
     }
 
-# Создаем клавиатуру для основного меню
+# Создаем клавиатуру для основного меню (только одна кнопка)
 def create_main_keyboard():
-    """Создание основной клавиатуры"""
+    """Создание основной клавиатуры с одной кнопкой"""
+    builder = ReplyKeyboardBuilder()
+    builder.add(KeyboardButton(text="⛏️ Открыть веб-приложение", web_app=WebAppInfo(url="https://mrmicse.github.io/minecraft-cases/")))
+    return builder.as_markup(resize_keyboard=True)
+
+# Функции для создания inline-клавиатур
+def create_main_inline_keyboard():
+    """Создание основной inline-клавиатуры"""
     keyboard = [
         [
-            KeyboardButton(text="👤 Профиль"),
-            KeyboardButton(text="💰 Баланс")
+            InlineKeyboardButton(text="👤 Профиль", callback_data="profile"),
+            InlineKeyboardButton(text="💰 Баланс", callback_data="balance")
         ],
         [
-            KeyboardButton(text="🎒 Инвентарь"),
-            KeyboardButton(text="📦 Кейсы")
+            InlineKeyboardButton(text="🎒 Инвентарь", callback_data="inventory"),
+            InlineKeyboardButton(text="📦 Кейсы", callback_data="cases")
         ],
         [
-            KeyboardButton(text="🎁 Ежедневный бонус"),
-            KeyboardButton(text="📊 Статистика")
-        ],
-        [
-            KeyboardButton(text="⛏️ Открыть веб-приложение", web_app=WebAppInfo(url="https://mrmicse.github.io/minecraft-cases/"))
+            InlineKeyboardButton(text="🎁 Ежедневный бонус", callback_data="daily"),
+            InlineKeyboardButton(text="📊 Статистика", callback_data="stats")
         ]
     ]
-    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def create_back_keyboard(back_to: str = "main"):
+    """Создание клавиатуры с кнопкой Назад"""
+    keyboard = [
+        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_{back_to}")]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def create_profile_keyboard():
+    """Создание клавиатуры для профиля"""
+    keyboard = [
+        [
+            InlineKeyboardButton(text="💰 Пополнить", callback_data="deposit"),
+            InlineKeyboardButton(text="📊 Статистика", callback_data="stats")
+        ],
+        [
+            InlineKeyboardButton(text="🎁 Ежедневный бонус", callback_data="daily"),
+            InlineKeyboardButton(text="📦 Кейсы", callback_data="cases")
+        ],
+        [
+            InlineKeyboardButton(text="🔙 Назад", callback_data="back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def create_balance_keyboard():
+    """Создание клавиатуры для баланса"""
+    keyboard = [
+        [
+            InlineKeyboardButton(text="💰 Пополнить", callback_data="deposit"),
+            InlineKeyboardButton(text="📈 История", callback_data="transactions")
+        ],
+        [
+            InlineKeyboardButton(text="🔙 Назад", callback_data="back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def create_inventory_keyboard():
+    """Создание клавиатуры для инвентаря"""
+    keyboard = [
+        [
+            InlineKeyboardButton(text="💰 Продать предметы", callback_data="sell_items"),
+            InlineKeyboardButton(text="⭐ Избранное", callback_data="favorites")
+        ],
+        [
+            InlineKeyboardButton(text="🔙 Назад", callback_data="back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+def create_cases_keyboard():
+    """Создание клавиатуры для кейсов"""
+    keyboard = [
+        [
+            InlineKeyboardButton(text="💰 Купить кристаллы", callback_data="buy_gems"),
+            InlineKeyboardButton(text="🎁 Промокод", callback_data="promo")
+        ],
+        [
+            InlineKeyboardButton(text="🔙 Назад", callback_data="back_main")
+        ]
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+# Сохраняем ID сообщения пользователя
+def save_user_message(user_id: int, message_id: int):
+    """Сохранение ID сообщения пользователя"""
+    user_messages[user_id] = message_id
+
+def get_user_message(user_id: int):
+    """Получение ID сообщения пользователя"""
+    return user_messages.get(user_id)
 
 # Обработчики команд
 @router.message(Command("start"))
@@ -585,18 +664,55 @@ async def cmd_start(message: Message):
 💼 <b>Общая стоимость:</b> {total_value} 💎
 🎁 <b>Открыто кейсов:</b> {user['cases_opened']}
 
-<code>Используйте кнопки ниже для управления аккаунтом!</code>
+<b>Используйте кнопки ниже для управления аккаунтом:</b>
     """
     
-    await message.answer(text, reply_markup=create_main_keyboard(), parse_mode=ParseMode.HTML)
+    # Отправляем сообщение с inline-клавиатурой
+    sent_message = await message.answer(text, reply_markup=create_main_inline_keyboard(), parse_mode=ParseMode.HTML)
+    
+    # Сохраняем ID сообщения
+    save_user_message(message.from_user.id, sent_message.message_id)
+    
+    # Отправляем клавиатуру с одной кнопкой веб-приложения
+    await message.answer("Нажмите кнопку ниже, чтобы открыть веб-приложение:", reply_markup=create_main_keyboard())
+    
     print(f"📤 Отправлен ответ пользователю {message.from_user.id}")
 
-@router.message(Command("profile"))
-async def cmd_profile(message: Message):
-    """Команда /profile - полный профиль пользователя"""
-    print(f"📥 Получена команда /profile от пользователя {message.from_user.id}")
+# Функция для отправки/редактирования сообщения
+async def send_or_edit_message(user_id: int, text: str, reply_markup=None):
+    """Отправка или редактирование сообщения пользователя"""
+    message_id = get_user_message(user_id)
     
-    user = get_user(message.from_user.id)
+    if message_id:
+        try:
+            # Пытаемся отредактировать существующее сообщение
+            await bot.edit_message_text(
+                chat_id=user_id,
+                message_id=message_id,
+                text=text,
+                reply_markup=reply_markup,
+                parse_mode=ParseMode.HTML
+            )
+            return
+        except Exception as e:
+            print(f"❌ Ошибка редактирования сообщения: {e}")
+    
+    # Если не удалось отредактировать, отправляем новое
+    sent_message = await bot.send_message(
+        chat_id=user_id,
+        text=text,
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.HTML
+    )
+    
+    # Сохраняем ID нового сообщения
+    save_user_message(user_id, sent_message.message_id)
+
+# Обработчики callback-запросов
+@router.callback_query(F.data == "profile")
+async def show_profile(callback: CallbackQuery):
+    """Показать профиль"""
+    user = get_user(callback.from_user.id)
     
     # Получаем дополнительную статистику
     conn = sqlite3.connect(DB_PATH)
@@ -615,7 +731,7 @@ async def cmd_profile(message: Message):
     total_value_result = cursor.fetchone()
     total_value = total_value_result[0] if total_value_result[0] else 0
     
-    # Получаем самые редкие предметы
+    # Получаем самый редкий предмет
     cursor.execute('''
     SELECT i.name, i.icon, i.rarity, i.price 
     FROM inventory inv 
@@ -630,48 +746,27 @@ async def cmd_profile(message: Message):
             WHEN 'common' THEN 5
         END,
         i.price DESC
-    LIMIT 5
+    LIMIT 1
     ''', (user["user_id"],))
     
-    top_items = cursor.fetchall()
+    rarest_item = cursor.fetchone()
     conn.close()
     
-    # Форматируем топ предметов
-    top_items_text = ""
-    if top_items:
-        for i, item in enumerate(top_items, 1):
-            name, icon, rarity, price = item
-            rarity_icon = {
-                'legendary': '🟡',
-                'epic': '🟣',
-                'rare': '🔵',
-                'uncommon': '🟢',
-                'common': '⚪'
-            }.get(rarity, '⚪')
-            
-            top_items_text += f"{i}. {icon} {name} {rarity_icon} - {price} 💎\n"
+    # Форматируем самый редкий предмет
+    rarest_item_text = ""
+    if rarest_item:
+        name, icon, rarity, price = rarest_item
+        rarity_icon = {
+            'legendary': '🟡',
+            'epic': '🟣',
+            'rare': '🔵',
+            'uncommon': '🟢',
+            'common': '⚪'
+        }.get(rarity, '⚪')
+        
+        rarest_item_text = f"{icon} {name} {rarity_icon} - {price} 💎"
     else:
-        top_items_text = "🎒 Инвентарь пуст\n"
-    
-    # Создаем клавиатуру для профиля
-    profile_keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="💰 Пополнить баланс", callback_data="deposit"),
-                InlineKeyboardButton(text="🔄 Обменять", callback_data="trade")
-            ],
-            [
-                InlineKeyboardButton(text="📊 Подробная статистика", callback_data="full_stats"),
-                InlineKeyboardButton(text="🎁 Ежедневный бонус", callback_data="daily")
-            ],
-            [
-                InlineKeyboardButton(
-                    text="⛏️ Открыть веб-приложение",
-                    web_app=WebAppInfo(url="https://mrmicse.github.io/minecraft-cases/")
-                )
-            ]
-        ]
-    )
+        rarest_item_text = "🎒 Инвентарь пуст"
     
     text = f"""
 <b>👤 ПРОФИЛЬ ИГРОКА</b>
@@ -687,27 +782,19 @@ async def cmd_profile(message: Message):
 <b>💼 Общая стоимость:</b> {total_value} 💎
 <b>🎁 Открыто кейсов:</b> {user['cases_opened']}
 
-<b>🏆 Топ предметов:</b>
-{top_items_text}
+<b>🏆 Самый редкий предмет:</b>
+{rarest_item_text}
 
 <b>📅 Дата регистрации:</b> {datetime.now().strftime('%d.%m.%Y')}
     """
     
-    await message.answer(text, reply_markup=profile_keyboard, parse_mode=ParseMode.HTML)
-    print(f"📤 Отправлен профиль пользователю {message.from_user.id}")
+    await send_or_edit_message(callback.from_user.id, text, create_profile_keyboard())
+    await callback.answer()
 
-@router.message(F.text == "👤 Профиль")
-async def handle_profile_button(message: Message):
-    """Обработка кнопки Профиль"""
-    await cmd_profile(message)
-
-@router.message(Command("balance"))
-@router.message(F.text == "💰 Баланс")
-async def cmd_balance(message: Message):
-    """Проверка баланса"""
-    print(f"📥 Получен запрос баланса от пользователя {message.from_user.id}")
-    
-    user = get_user(message.from_user.id)
+@router.callback_query(F.data == "balance")
+async def show_balance(callback: CallbackQuery):
+    """Показать баланс"""
+    user = get_user(callback.from_user.id)
     
     # Получаем последние транзакции
     conn = sqlite3.connect(DB_PATH)
@@ -717,7 +804,7 @@ async def cmd_balance(message: Message):
            FROM transactions 
            WHERE user_id = ? 
            ORDER BY created_at DESC 
-           LIMIT 5""",
+           LIMIT 3""",
         (user["user_id"],)
     )
     
@@ -730,14 +817,15 @@ async def cmd_balance(message: Message):
             trans_type, amount, description, created_at = trans
             icon = "🟢" if amount > 0 else "🔴"
             sign = "+" if amount > 0 else ""
-            transactions_text += f"{icon} {sign}{amount} 💎 - {description}\n"
+            date = datetime.strptime(created_at, '%Y-%m-%d %H:%M:%S').strftime('%d.%m')
+            transactions_text += f"{icon} {sign}{amount} 💎 - {description} ({date})\n"
     else:
         transactions_text = "История транзакций пуста\n"
     
     text = f"""
 <b>💰 БАЛАНС АККАУНТА</b>
 
-<b>👤 Игрок:</b> {message.from_user.first_name}
+<b>👤 Игрок:</b> {callback.from_user.first_name}
 <b>💎 Текущий баланс:</b> {user['balance']} 💎
 
 <b>📊 Последние операции:</b>
@@ -746,31 +834,13 @@ async def cmd_balance(message: Message):
 <b>💡 Совет:</b> Пополняйте баланс через веб-приложение для мгновенного зачисления!
     """
     
-    balance_keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="💰 Пополнить", callback_data="deposit_balance"),
-                InlineKeyboardButton(text="📊 Вся история", callback_data="transactions")
-            ],
-            [
-                InlineKeyboardButton(
-                    text="⛏️ Открыть веб-приложение",
-                    web_app=WebAppInfo(url="https://mrmicse.github.io/minecraft-cases/")
-                )
-            ]
-        ]
-    )
-    
-    await message.answer(text, reply_markup=balance_keyboard, parse_mode=ParseMode.HTML)
-    print(f"📤 Отправлен баланс пользователю {message.from_user.id}")
+    await send_or_edit_message(callback.from_user.id, text, create_balance_keyboard())
+    await callback.answer()
 
-@router.message(Command("inventory"))
-@router.message(F.text == "🎒 Инвентарь")
-async def cmd_inventory(message: Message):
-    """Просмотр инвентаря"""
-    print(f"📥 Получен запрос инвентаря от пользователя {message.from_user.id}")
-    
-    user = get_user(message.from_user.id)
+@router.callback_query(F.data == "inventory")
+async def show_inventory(callback: CallbackQuery):
+    """Показать инвентарь"""
+    user = get_user(callback.from_user.id)
     inventory = get_inventory(user["user_id"])
     
     if not inventory:
@@ -782,18 +852,8 @@ async def cmd_inventory(message: Message):
 Откройте кейсы в веб-приложении, чтобы получить предметы! ⛏️
         """
         
-        inventory_keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="⛏️ Открыть веб-приложение",
-                        web_app=WebAppInfo(url="https://mrmicse.github.io/minecraft-cases/")
-                    )
-                ]
-            ]
-        )
-        
-        await message.answer(text, reply_markup=inventory_keyboard, parse_mode=ParseMode.HTML)
+        await send_or_edit_message(callback.from_user.id, text, create_inventory_keyboard())
+        await callback.answer()
         return
     
     # Группируем предметы по редкости
@@ -810,7 +870,7 @@ async def cmd_inventory(message: Message):
     text = f"""
 <b>🎒 ВАШ ИНВЕНТАРЬ</b>
 
-<b>👤 Игрок:</b> {message.from_user.first_name}
+<b>👤 Игрок:</b> {callback.from_user.first_name}
 <b>📦 Всего предметов:</b> {len(inventory)}
 <b>💰 Общая стоимость:</b> {total_value} 💎
     """
@@ -826,97 +886,66 @@ async def cmd_inventory(message: Message):
     
     for rarity in ['legendary', 'epic', 'rare', 'uncommon', 'common']:
         if rarity in items_by_rarity:
-            text += f"\n<b>{rarity_names[rarity]} ({len(items_by_rarity[rarity])}):</b>\n"
-            for i, item in enumerate(items_by_rarity[rarity][:3], 1):
-                text += f"{i}. {item['icon']} {item['name']} - {item['price']} 💎\n"
-            if len(items_by_rarity[rarity]) > 3:
-                text += f"... и еще {len(items_by_rarity[rarity]) - 3} предметов\n"
+            count = len(items_by_rarity[rarity])
+            total_price = sum(item['price'] * item['quantity'] for item in items_by_rarity[rarity])
+            text += f"\n<b>{rarity_names[rarity]}:</b> {count} предметов на {total_price} 💎"
     
-    text += "\n<b>📱 Для детального просмотра используйте веб-приложение!</b>"
+    text += "\n\n<b>📱 Для детального просмотра используйте веб-приложение!</b>"
     
-    inventory_keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="💰 Продать предметы", callback_data="sell_items"),
-                InlineKeyboardButton(text="⭐ Избранное", callback_data="favorites")
-            ],
-            [
-                InlineKeyboardButton(
-                    text="⛏️ Открыть веб-приложение",
-                    web_app=WebAppInfo(url="https://mrmicse.github.io/minecraft-cases/")
-                )
-            ]
-        ]
-    )
-    
-    await message.answer(text, reply_markup=inventory_keyboard, parse_mode=ParseMode.HTML)
-    print(f"📤 Отправлен инвентарь пользователю {message.from_user.id}")
+    await send_or_edit_message(callback.from_user.id, text, create_inventory_keyboard())
+    await callback.answer()
 
-@router.message(Command("cases"))
-@router.message(F.text == "📦 Кейсы")
-async def cmd_cases(message: Message):
-    """Просмотр доступных кейсов"""
-    print(f"📥 Получен запрос кейсов от пользователя {message.from_user.id}")
-    
+@router.callback_query(F.data == "cases")
+async def show_cases(callback: CallbackQuery):
+    """Показать кейсы"""
     cases = get_cases()
-    user = get_user(message.from_user.id)
+    user = get_user(callback.from_user.id)
     
     text = f"""
 <b>📦 ДОСТУПНЫЕ КЕЙСЫ</b>
 
 <b>💰 Ваш баланс:</b> {user['balance']} 💎
-    """
+<b>🎮 Ваш уровень:</b> {user['level']}
+
+"""
     
-    for case in cases:
+    for i, case in enumerate(cases[:3], 1):  # Показываем только 3 кейса
         rarity_weights = case['rarity_weights']
         
         # Форматируем шансы
         chances = []
         for rarity, weight in rarity_weights.items():
             percentage = (weight / sum(rarity_weights.values())) * 100
-            rarity_icons = {
-                'common': '⚪',
-                'uncommon': '🟢',
-                'rare': '🔵',
-                'epic': '🟣',
-                'legendary': '🟡'
-            }
-            chances.append(f"{rarity_icons.get(rarity, '⚪')}{percentage:.0f}%")
+            if percentage > 0:
+                rarity_icons = {
+                    'common': '⚪',
+                    'uncommon': '🟢',
+                    'rare': '🔵',
+                    'epic': '🟣',
+                    'legendary': '🟡'
+                }
+                chances.append(f"{rarity_icons.get(rarity, '⚪')}{percentage:.0f}%")
         
         text += f"""
-{case['icon']} <b>{case['name']}</b> - {case['price']} 💎
+<b>{case['icon']} {case['name']}</b> - {case['price']} 💎
 {case['description']}
 Шансы: {' | '.join(chances)}
 """
+    
+    if len(cases) > 3:
+        text += f"\n... и еще {len(cases) - 3} кейсов"
     
     text += """
 <b>📱 Для открытия кейсов используйте веб-приложение!</b>
 """
     
-    cases_keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="💰 Купить кристаллы", callback_data="buy_gems"),
-                InlineKeyboardButton(text="🎁 Промокод", callback_data="promo")
-            ],
-            [
-                InlineKeyboardButton(
-                    text="⛏️ Открыть веб-приложение",
-                    web_app=WebAppInfo(url="https://mrmicse.github.io/minecraft-cases/")
-                )
-            ]
-        ]
-    )
-    
-    await message.answer(text, reply_markup=cases_keyboard, parse_mode=ParseMode.HTML)
+    await send_or_edit_message(callback.from_user.id, text, create_cases_keyboard())
+    await callback.answer()
 
-@router.message(Command("daily"))
-@router.message(F.text == "🎁 Ежедневный бонус")
-async def cmd_daily(message: Message):
+@router.callback_query(F.data == "daily")
+async def show_daily(callback: CallbackQuery):
     """Ежедневный бонус"""
-    print(f"📥 Получен запрос ежедневного бонуса от пользователя {message.from_user.id}")
-    
-    user_id = message.from_user.id
+    user_id = callback.from_user.id
     user = get_user(user_id)
     
     conn = sqlite3.connect(DB_PATH)
@@ -943,8 +972,9 @@ async def cmd_daily(message: Message):
 
 Приходите завтра за новой наградой! ⏰
             """
-            await message.answer(text, parse_mode=ParseMode.HTML)
+            await send_or_edit_message(user_id, text, create_back_keyboard("main"))
             conn.close()
+            await callback.answer()
             return
     
     # Начисляем бонус
@@ -966,32 +996,15 @@ async def cmd_daily(message: Message):
 🕐 <b>Следующий бонус через 24 часа!</b>
     """
     
-    daily_keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="💰 Баланс", callback_data="check_balance"),
-                InlineKeyboardButton(text="👤 Профиль", callback_data="profile")
-            ],
-            [
-                InlineKeyboardButton(
-                    text="⛏️ Открыть веб-приложение",
-                    web_app=WebAppInfo(url="https://mrmicse.github.io/minecraft-cases/")
-                )
-            ]
-        ]
-    )
-    
-    await message.answer(text, reply_markup=daily_keyboard, parse_mode=ParseMode.HTML)
+    await send_or_edit_message(user_id, text, create_back_keyboard("main"))
     conn.close()
+    await callback.answer()
     print(f"📤 Начислен ежедневный бонус пользователю {user_id}")
 
-@router.message(Command("stats"))
-@router.message(F.text == "📊 Статистика")
-async def cmd_stats(message: Message):
+@router.callback_query(F.data == "stats")
+async def show_stats(callback: CallbackQuery):
     """Статистика аккаунта"""
-    print(f"📥 Получен запрос статистики от пользователя {message.from_user.id}")
-    
-    user = get_user(message.from_user.id)
+    user = get_user(callback.from_user.id)
     
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -1068,7 +1081,7 @@ async def cmd_stats(message: Message):
     text = f"""
 <b>📊 СТАТИСТИКА АККАУНТА</b>
 
-<b>👤 Игрок:</b> {message.from_user.first_name}
+<b>👤 Игрок:</b> {callback.from_user.first_name}
 <b>🆔 ID:</b> <code>{user['user_id']}</code>
 
 <b>💰 Финансы:</b>
@@ -1091,39 +1104,62 @@ async def cmd_stats(message: Message):
 <b>🕐 В сети:</b> Сейчас онлайн
     """
     
-    stats_keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="📈 График прогресса", callback_data="progress_chart"),
-                InlineKeyboardButton(text="🏆 Достижения", callback_data="achievements")
-            ],
-            [
-                InlineKeyboardButton(
-                    text="⛏️ Открыть веб-приложение",
-                    web_app=WebAppInfo(url="https://mrmicse.github.io/minecraft-cases/")
-                )
-            ]
-        ]
-    )
-    
-    await message.answer(text, reply_markup=stats_keyboard, parse_mode=ParseMode.HTML)
-    print(f"📤 Отправлена статистика пользователю {message.from_user.id}")
+    await send_or_edit_message(callback.from_user.id, text, create_back_keyboard("main"))
+    await callback.answer()
 
-# Обработка Web App данных
-@router.message(F.web_app_data)
-async def handle_web_app_data(message: Message):
-    """Обработка данных из Web App"""
+# Обработчики кнопок "Назад"
+@router.callback_query(F.data.startswith("back_"))
+async def handle_back(callback: CallbackQuery):
+    """Обработка кнопки Назад"""
+    back_to = callback.data.split("_")[1]
+    
+    if back_to == "main":
+        user = get_user(callback.from_user.id)
+        
+        # Получаем статистику
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT COUNT(*) FROM inventory WHERE user_id = ?",
+            (user["user_id"],)
+        )
+        items_count = cursor.fetchone()[0]
+        
+        cursor.execute(
+            "SELECT SUM(i.price * inv.quantity) FROM inventory inv JOIN items i ON inv.item_id = i.item_id WHERE inv.user_id = ?",
+            (user["user_id"],)
+        )
+        total_value_result = cursor.fetchone()
+        total_value = total_value_result[0] if total_value_result[0] else 0
+        conn.close()
+        
+        text = f"""
+⛏️ <b>Главное меню</b>
+
+💰 <b>Баланс:</b> {user['balance']} 💎
+🎮 <b>Уровень:</b> {user['level']}
+⭐ <b>Опыт:</b> {user['experience']} XP
+
+📦 <b>Предметов в инвентаре:</b> {items_count}
+💼 <b>Общая стоимость:</b> {total_value} 💎
+🎁 <b>Открыто кейсов:</b> {user['cases_opened']}
+
+<b>Выберите действие:</b>
+        """
+        
+        await send_or_edit_message(callback.from_user.id, text, create_main_inline_keyboard())
+    
+    await callback.answer()
+
+# Специальная функция для обработки запросов от веб-приложения
+async def handle_webapp_request(user_id: int, data: dict) -> dict:
+    """Обработка запроса от веб-приложения"""
     try:
-        print(f"🌐 Получены данные из Web App от пользователя {message.from_user.id}")
-        
-        data = json.loads(message.web_app_data.data)
-        user_id = message.from_user.id
         action = data.get('action')
+        print(f"🌐 Обработка запроса от веб-приложения: {action} от пользователя {user_id}")
         
-        print(f"📋 Действие: {action}")
-        
-        if action == 'init' or action == 'sync_data':
-            # Инициализация или синхронизация
+        if action == 'init':
+            # Инициализация данных
             webapp_data = get_user_full_data(user_id)
             webapp_data['success'] = True
             webapp_data['config'] = {
@@ -1132,13 +1168,8 @@ async def handle_web_app_data(message: Message):
                 'daily_bonus': 100,
                 'version': '1.0.0'
             }
-            
-            # Отправляем ответ
-            await message.answer(
-                json.dumps(webapp_data),
-                parse_mode=None
-            )
-            print(f"📤 Отправлен ответ на {action}")
+            print(f"📤 Отправлены данные инициализации пользователю {user_id}")
+            return webapp_data
             
         elif action == 'open_case':
             # Открытие кейса
@@ -1149,17 +1180,14 @@ async def handle_web_app_data(message: Message):
             
             if 'error' in result:
                 print(f"❌ Ошибка при открытии кейса: {result['error']}")
-                response = {'success': False, 'error': result['error']}
-                await message.answer(json.dumps(response), parse_mode=None)
-                return
+                return {'success': False, 'error': result['error']}
             
             # Добавляем дополнительные данные
             webapp_data = get_user_full_data(user_id)
             result.update(webapp_data)
             
-            # Отправляем результат
-            await message.answer(json.dumps(result), parse_mode=None)
-            print(f"📤 Отправлен результат открытия кейса")
+            print(f"✅ Кейс успешно открыт пользователем {user_id}")
+            return result
             
         elif action == 'sell_item':
             # Продажа предмета
@@ -1174,10 +1202,8 @@ async def handle_web_app_data(message: Message):
             item_data = cursor.fetchone()
             
             if not item_data:
-                response = {'success': False, 'error': 'Предмет не найден'}
-                await message.answer(json.dumps(response), parse_mode=None)
                 conn.close()
-                return
+                return {'success': False, 'error': 'Предмет не найден'}
             
             # Удаляем предмет из инвентаря
             cursor.execute(
@@ -1186,10 +1212,8 @@ async def handle_web_app_data(message: Message):
             )
             
             if cursor.rowcount == 0:
-                response = {'success': False, 'error': 'Предмет не найден в инвентаре'}
-                await message.answer(json.dumps(response), parse_mode=None)
                 conn.close()
-                return
+                return {'success': False, 'error': 'Предмет не найден в инвентаре'}
             
             # Добавляем деньги
             sell_price, item_name = item_data
@@ -1207,79 +1231,160 @@ async def handle_web_app_data(message: Message):
             }
             response.update(webapp_data)
             
-            await message.answer(json.dumps(response), parse_mode=None)
             conn.commit()
             conn.close()
+            print(f"✅ Предмет продан пользователем {user_id}")
+            return response
+            
+        elif action == 'sync_data':
+            # Синхронизация данных
+            webapp_data = get_user_full_data(user_id)
+            webapp_data['success'] = True
+            print(f"📊 Синхронизированы данные пользователя {user_id}")
+            return webapp_data
             
         else:
             # Неизвестное действие
-            response = {'success': False, 'error': 'Неизвестное действие'}
-            await message.answer(json.dumps(response), parse_mode=None)
-            print(f"❌ Неизвестное действие: {action}")
+            print(f"❌ Неизвестное действие от веб-приложения: {action}")
+            return {'success': False, 'error': 'Неизвестное действие'}
             
-    except json.JSONDecodeError as e:
-        print(f"❌ Ошибка декодирования JSON: {e}")
-        response = {'success': False, 'error': 'Неверный формат данных'}
-        await message.answer(json.dumps(response), parse_mode=None)
     except Exception as e:
-        print(f"❌ Ошибка обработки Web App данных: {e}")
+        print(f"❌ Ошибка обработки запроса от веб-приложения: {e}")
         import traceback
         traceback.print_exc()
         
-        if DEBUG:
-            error_msg = str(e)
-        else:
-            error_msg = "Произошла ошибка. Пожалуйста, попробуйте позже."
+        return {'success': False, 'error': 'Произошла ошибка на сервере'}
+
+# Основной обработчик данных из веб-приложения
+@router.message(F.web_app_data)
+async def handle_web_app_data(message: Message):
+    """Обработка данных из Web App"""
+    try:
+        print(f"🌐 Получены данные из Web App от пользователя {message.from_user.id}")
         
-        response = {'success': False, 'error': error_msg}
-        await message.answer(json.dumps(response), parse_mode=None)
+        # Проверяем, есть ли данные
+        if not hasattr(message, 'web_app_data') or not message.web_app_data:
+            print(f"❌ Нет данных web_app_data в сообщении")
+            await message.answer(json.dumps({'success': False, 'error': 'Нет данных'}), parse_mode=None)
+            return
+        
+        # Получаем данные
+        data_str = message.web_app_data.data
+        print(f"📋 Получены данные: {data_str[:100]}...")
+        
+        # Парсим JSON
+        try:
+            data = json.loads(data_str)
+        except json.JSONDecodeError as e:
+            print(f"❌ Ошибка парсинга JSON: {e}")
+            await message.answer(json.dumps({'success': False, 'error': 'Неверный формат данных'}), parse_mode=None)
+            return
+        
+        # Обрабатываем запрос
+        response = await handle_webapp_request(message.from_user.id, data)
+        
+        # Отправляем ответ
+        response_str = json.dumps(response)
+        print(f"📤 Отправляем ответ пользователю {message.from_user.id}: {response_str[:100]}...")
+        
+        await message.answer(response_str, parse_mode=None)
+        
+        # Обновляем главное меню если была операция с балансом
+        if data.get('action') in ['open_case', 'sell_item'] and response.get('success'):
+            user = get_user(message.from_user.id)
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) FROM inventory WHERE user_id = ?",
+                (user["user_id"],)
+            )
+            items_count = cursor.fetchone()[0]
+            
+            cursor.execute(
+                "SELECT SUM(i.price * inv.quantity) FROM inventory inv JOIN items i ON inv.item_id = i.item_id WHERE inv.user_id = ?",
+                (user["user_id"],)
+            )
+            total_value_result = cursor.fetchone()
+            total_value = total_value_result[0] if total_value_result[0] else 0
+            conn.close()
+            
+            text = f"""
+⛏️ <b>Главное меню</b>
 
-# Обработчики callback-запросов
-@router.callback_query(F.data == "profile")
-async def show_profile_callback(callback: CallbackQuery):
-    """Показать профиль через callback"""
-    await cmd_profile(callback.message)
-    await callback.answer()
+💰 <b>Баланс:</b> {user['balance']} 💎
+🎮 <b>Уровень:</b> {user['level']}
+⭐ <b>Опыт:</b> {user['experience']} XP
 
-@router.callback_query(F.data == "check_balance")
-async def check_balance_callback(callback: CallbackQuery):
-    """Проверить баланс через callback"""
-    await cmd_balance(callback.message)
-    await callback.answer()
+📦 <b>Предметов в инвентаре:</b> {items_count}
+💼 <b>Общая стоимость:</b> {total_value} 💎
+🎁 <b>Открыто кейсов:</b> {user['cases_opened']}
 
-@router.callback_query(F.data == "daily")
-async def daily_callback(callback: CallbackQuery):
-    """Получить ежедневный бонус через callback"""
-    await cmd_daily(callback.message)
-    await callback.answer()
+<b>Выберите действие:</b>
+            """
+            
+            # Обновляем сообщение
+            message_id = get_user_message(message.from_user.id)
+            if message_id:
+                try:
+                    await bot.edit_message_text(
+                        chat_id=message.from_user.id,
+                        message_id=message_id,
+                        text=text,
+                        reply_markup=create_main_inline_keyboard(),
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception as e:
+                    print(f"⚠️ Не удалось обновить сообщение: {e}")
+        
+    except Exception as e:
+        print(f"❌ Критическая ошибка в обработке Web App данных: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        try:
+            await message.answer(
+                json.dumps({'success': False, 'error': 'Произошла ошибка на сервере'}),
+                parse_mode=None
+            )
+        except:
+            pass
 
-@router.callback_query(F.data == "full_stats")
-async def full_stats_callback(callback: CallbackQuery):
-    """Полная статистика через callback"""
-    await cmd_stats(callback.message)
-    await callback.answer()
+# Обработка текстовых сообщений
+@router.message(F.text == "⛏️ Открыть веб-приложение")
+async def handle_webapp_button(message: Message):
+    """Обработка кнопки веб-приложения"""
+    print(f"🔄 Пользователь {message.from_user.id} нажал кнопку веб-приложения")
+    await message.answer("Нажмите на кнопку ниже, чтобы открыть веб-приложение:", reply_markup=create_main_keyboard())
 
 @router.message()
 async def handle_unknown(message: Message):
     """Обработка неизвестных сообщений"""
     print(f"❓ Получено неизвестное сообщение от {message.from_user.id}: {message.text}")
     
+    # Игнорируем сообщения от ботов
+    if message.from_user.is_bot:
+        return
+    
+    # Если сообщение похоже на JSON от веб-приложения, обрабатываем его
+    if message.text and message.text.startswith('{') and message.text.endswith('}'):
+        try:
+            data = json.loads(message.text)
+            if 'action' in data:
+                print(f"🔍 Обнаружен JSON запрос в текстовом сообщении: {data.get('action')}")
+                response = await handle_webapp_request(message.from_user.id, data)
+                await message.answer(json.dumps(response), parse_mode=None)
+                return
+        except:
+            pass
+    
+    # Отправляем подсказку для других сообщений
     text = """
 🤔 <b>Не понимаю вашу команду.</b>
 
-<b>Доступные команды:</b>
-/start - Запустить бота
-/profile - Профиль игрока
-/balance - Проверить баланс
-/inventory - Просмотр инвентаря
-/cases - Доступные кейсы
-/daily - Ежедневный бонус
-/stats - Статистика аккаунта
-
-<b>Или используйте кнопки внизу экрана!</b>
+Нажмите /start чтобы открыть меню или используйте кнопку веб-приложения внизу экрана.
     """
     
-    await message.answer(text, reply_markup=create_main_keyboard(), parse_mode=ParseMode.HTML)
+    await message.answer(text, parse_mode=ParseMode.HTML)
 
 async def main():
     """Основная функция запуска бота"""

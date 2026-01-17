@@ -1,27 +1,19 @@
 // Инициализация Telegram Web App
 const tg = window.Telegram?.WebApp;
+let isWebAppInitialized = false;
+
 if (tg) {
+    console.log('Telegram Web App инициализирован');
     tg.expand();
     tg.BackButton?.hide();
-    console.log('Telegram Web App инициализирован');
+    isWebAppInitialized = true;
     
     // Показываем основную кнопку
     tg.MainButton.text = "Открыть меню";
     tg.MainButton.show();
     
-    // Обработчик для получения ответов от бота
-    tg.onEvent('webAppDataReceived', (event) => {
-        console.log('Получены данные от бота через webAppDataReceived:', event);
-        if (event && event.data) {
-            try {
-                const response = JSON.parse(event.data);
-                console.log('Парсинг ответа от бота:', response);
-                handleBotResponse(response);
-            } catch (e) {
-                console.error('Ошибка парсинга JSON от бота:', e);
-            }
-        }
-    });
+    // Инициализация данных из бота
+    initializeBotData();
 }
 
 // Глобальные переменные
@@ -149,6 +141,36 @@ function easeOutCubic(t) {
     return 1 - Math.pow(1 - t, 3);
 }
 
+// Инициализация данных из бота
+async function initializeBotData() {
+    console.log('Инициализация данных из бота...');
+    showLoading();
+    
+    try {
+        const result = await sendDataToBot('init', {});
+        
+        if (result && result.success) {
+            console.log('Данные успешно получены от бота');
+            handleBotResponse(result);
+        } else {
+            console.log('Не удалось получить данные от бота, используем локальные');
+            loadDemoData();
+        }
+        
+        updateUI();
+        
+    } catch (error) {
+        console.error('Ошибка инициализации:', error);
+        loadDemoData();
+        updateUI();
+    }
+    
+    setTimeout(() => {
+        hideLoading();
+        console.log('Приложение загружено!');
+    }, 500);
+}
+
 // Инициализация приложения
 async function initApp() {
     console.log('Инициализация приложения...');
@@ -158,17 +180,22 @@ async function initApp() {
         // Загружаем из localStorage для быстрого отображения
         loadFromLocalStorage();
         
-        // Синхронизируемся с сервером
-        const result = await syncWithServer();
-        
-        if (result && result.success) {
-            console.log('Данные успешно синхронизированы с сервером');
+        if (isWebAppInitialized) {
+            // Если это Web App, синхронизируем с сервером
+            const result = await syncWithServer();
+            
+            if (result && result.success) {
+                console.log('Данные успешно синхронизированы с сервером');
+            } else {
+                console.log('Используем локальные данные');
+                loadDemoData();
+            }
         } else {
-            console.log('Используем локальные данные');
+            // Если это не Web App, используем демо-данные
+            console.log('Telegram Web App не доступен, используем демо-режим');
             loadDemoData();
         }
         
-        // Обновляем UI
         updateUI();
         
     } catch (error) {
@@ -179,7 +206,6 @@ async function initApp() {
     setTimeout(() => {
         hideLoading();
         console.log('Приложение загружено!');
-        console.log('Данные пользователя:', userData);
     }, 500);
 }
 
@@ -345,43 +371,73 @@ async function sendDataToBot(action, data) {
         
         // Переменная для хранения ID таймаута
         let timeoutId = null;
+        let responseReceived = false;
         
-        // Обработчик ответа от бота
-        const handleResponse = (event) => {
-            // Проверяем, что это сообщение от Telegram
-            if (event.data && typeof event.data === 'string') {
-                try {
-                    console.log('Получены данные от бота:', event.data);
-                    
-                    const response = JSON.parse(event.data);
-                    
-                    // Очищаем таймаут
-                    if (timeoutId) {
-                        clearTimeout(timeoutId);
-                        timeoutId = null;
-                    }
-                    
-                    // Удаляем обработчик
-                    window.removeEventListener('message', handleResponse);
-                    
-                    resolve(response);
-                } catch (e) {
-                    console.error('Ошибка парсинга ответа от бота:', e);
+        // Функция для обработки ответа
+        const processResponse = (responseData) => {
+            if (responseReceived) return;
+            responseReceived = true;
+            
+            try {
+                console.log('Получен ответ от бота:', responseData);
+                const response = JSON.parse(responseData);
+                
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
                 }
+                
+                resolve(response);
+            } catch (e) {
+                console.error('Ошибка парсинга ответа:', e);
+                resolve(handleDemoMode(action, data));
             }
         };
         
-        // Добавляем обработчик
-        window.addEventListener('message', handleResponse);
+        // Обработчик для Telegram Web App (основной способ)
+        const handleTelegramMessage = (event) => {
+            if (event.data && typeof event.data === 'string') {
+                console.log('Telegram Web App получил сообщение:', event.data);
+                processResponse(event.data);
+            }
+        };
         
-        // Отправляем данные
-        tg.sendData(requestData);
+        // Добавляем обработчики
+        if (tg.onEvent) {
+            tg.onEvent('message', handleTelegramMessage);
+        }
+        
+        // Традиционный обработчик сообщений
+        const handleMessageEvent = (event) => {
+            if (event.data && typeof event.data === 'string' && event.data.includes('success')) {
+                console.log('Получено сообщение через postMessage:', event.data);
+                processResponse(event.data);
+            }
+        };
+        
+        window.addEventListener('message', handleMessageEvent);
+        
+        // Отправляем данные через Telegram Web App
+        try {
+            tg.sendData(requestData);
+            console.log('Данные отправлены через tg.sendData');
+        } catch (error) {
+            console.error('Ошибка отправки через tg.sendData:', error);
+        }
         
         // Таймаут на случай если ответ не придет
         timeoutId = setTimeout(() => {
-            console.warn('Таймаут запроса, используем демо-режим');
-            window.removeEventListener('message', handleResponse);
-            resolve(handleDemoMode(action, data));
+            if (!responseReceived) {
+                console.warn('Таймаут запроса, используем демо-режим');
+                responseReceived = true;
+                
+                // Убираем обработчики
+                if (tg.offEvent) {
+                    tg.offEvent('message', handleTelegramMessage);
+                }
+                window.removeEventListener('message', handleMessageEvent);
+                
+                resolve(handleDemoMode(action, data));
+            }
         }, 5000);
     });
 }
@@ -409,9 +465,6 @@ function handleBotResponse(response) {
         
         // Сохраняем в localStorage
         saveToLocalStorage();
-        
-        // Обновляем UI
-        updateUI();
         
         console.log('Данные обновлены с сервера');
     }
