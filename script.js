@@ -68,7 +68,7 @@ const elements = {
     newBalance: document.getElementById('new-balance'),
 };
 
-// Minecraft предметы по категориям (локальные для отображения)
+// Minecraft предметы по категориям
 const minecraftItems = {
     common: [
         { name: "Железный Слиток", icon: "⛓️", price: 50, description: "Базовый ресурс для крафта" },
@@ -134,36 +134,59 @@ function easeOutCubic(t) {
     return 1 - Math.pow(1 - t, 3);
 }
 
-function easeInOutQuad(t) {
-    return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-}
-
 // Инициализация приложения
 async function initApp() {
     console.log('Инициализация приложения...');
     showLoading();
     
     try {
-        // Сначала пробуем синхронизироваться с сервером
-        const result = await syncWithServer();
+        // Сначала пытаемся загрузить из localStorage для быстрого отображения
+        loadFromLocalStorage();
         
-        if (result && result.success) {
-            console.log('Данные успешно загружены с сервера');
-        } else {
-            console.log('Используем локальные данные');
-        }
+        // Затем синхронизируемся с сервером
+        await syncWithServer();
+        
+        // Обновляем UI
+        updateUI();
         
     } catch (error) {
         console.error('Ошибка инициализации:', error);
         alert('Ошибка загрузки данных. Пожалуйста, обновите страницу.');
     }
     
-    updateUI();
-    
     setTimeout(() => {
         hideLoading();
         console.log('Приложение загружено!');
+        console.log('Данные пользователя:', userData);
     }, 500);
+}
+
+// Загрузка из localStorage
+function loadFromLocalStorage() {
+    const savedData = localStorage.getItem('minecraftCaseData');
+    if (savedData) {
+        try {
+            const parsed = JSON.parse(savedData);
+            userData.balance = parsed.balance || 0;
+            userData.experience = parsed.experience || 0;
+            userData.level = parsed.level || 1;
+            inventoryData = parsed.inventory || [];
+            console.log('Данные загружены из localStorage');
+        } catch (e) {
+            console.error('Ошибка загрузки из localStorage:', e);
+        }
+    }
+}
+
+// Сохранение в localStorage
+function saveToLocalStorage() {
+    const data = {
+        balance: userData.balance,
+        experience: userData.experience,
+        level: userData.level,
+        inventory: inventoryData
+    };
+    localStorage.setItem('minecraftCaseData', JSON.stringify(data));
 }
 
 // Синхронизация с сервером через Telegram Web App
@@ -182,6 +205,9 @@ async function syncWithServer() {
             
             inventoryData = response.inventory || [];
             casesData = response.cases || [];
+            
+            // Сохраняем в localStorage
+            saveToLocalStorage();
             
             console.log('Данные синхронизированы с сервером:', {
                 balance: userData.balance,
@@ -257,29 +283,19 @@ function loadDemoData() {
         }
     ];
     
-    // Используем данные из localStorage или начальные значения
-    const savedData = localStorage.getItem('minecraftCaseData');
-    if (savedData) {
-        const parsed = JSON.parse(savedData);
-        userData.balance = parsed.balance || 10000;
-        userData.experience = parsed.experience || 0;
-        userData.level = parsed.level || 1;
-        inventoryData = parsed.inventory || [];
-    } else {
+    // Если данных нет, устанавливаем начальные значения
+    if (userData.balance === 0) {
         userData.balance = 10000;
-        userData.experience = 0;
-        userData.level = 1;
-        inventoryData = [];
     }
     
     console.log('Демо-данные загружены');
 }
 
-// Отправка данных боту через Web App
+// Отправка данных боту через Web App - УПРОЩЕННАЯ ВЕРСИЯ
 async function sendDataToBot(action, data) {
     return new Promise((resolve) => {
         if (!tg) {
-            console.error('Telegram Web App не доступен, используем демо-режим');
+            console.log('Telegram Web App не доступен, используем демо-режим');
             resolve(handleDemoMode(action, data));
             return;
         }
@@ -295,8 +311,11 @@ async function sendDataToBot(action, data) {
         
         console.log('Отправляемые данные:', requestData);
         
-        // Обработчик для получения ответа от бота
-        const handleBotResponse = async (event) => {
+        // Глобальная переменная для хранения обработчика
+        window._botResponseHandler = null;
+        
+        // Создаем обработчик для получения ответа от бота
+        window._botResponseHandler = async (event) => {
             // Этот обработчик будет вызываться когда бот ответит
             if (event.data && event.data.type === 'message') {
                 try {
@@ -309,24 +328,33 @@ async function sendDataToBot(action, data) {
                             console.log('Парсинг ответа от бота:', parsedData);
                             
                             // Удаляем обработчик после получения ответа
-                            window.removeEventListener('message', handleBotResponse);
+                            if (window._botResponseHandler) {
+                                window.removeEventListener('message', window._botResponseHandler);
+                                window._botResponseHandler = null;
+                            }
                             resolve(parsedData);
                         } catch (e) {
                             console.error('Ошибка парсинга JSON:', e);
-                            window.removeEventListener('message', handleBotResponse);
+                            if (window._botResponseHandler) {
+                                window.removeEventListener('message', window._botResponseHandler);
+                                window._botResponseHandler = null;
+                            }
                             resolve(handleDemoMode(action, data));
                         }
                     }
                 } catch (e) {
                     console.error('Ошибка обработки сообщения:', e);
-                    window.removeEventListener('message', handleBotResponse);
+                    if (window._botResponseHandler) {
+                        window.removeEventListener('message', window._botResponseHandler);
+                        window._botResponseHandler = null;
+                    }
                     resolve(handleDemoMode(action, data));
                 }
             }
         };
         
         // Добавляем обработчик сообщений
-        window.addEventListener('message', handleBotResponse);
+        window.addEventListener('message', window._botResponseHandler);
         
         // Отправляем данные через Telegram Web App
         tg.sendData(requestData);
@@ -334,56 +362,13 @@ async function sendDataToBot(action, data) {
         // Таймаут на случай если ответ не придет
         setTimeout(() => {
             console.warn('Таймаут запроса, используем демо-режим');
-            window.removeEventListener('message', handleBotResponse);
-            resolve(handleDemoMode(action, data));
-        }, 10000); // Увеличиваем таймаут до 10 секунд
-    });
-}
-
-// Обработка ответов от бота (для демо-режима)
-if (tg) {
-    // Обработчик для получения ответов от бота
-    tg.onEvent('message', (message) => {
-        console.log('Получено сообщение от бота через onEvent:', message);
-        
-        try {
-            if (message.text) {
-                const parsedData = JSON.parse(message.text);
-                console.log('Парсинг ответа от бота:', parsedData);
-                
-                // Обрабатываем ответ
-                handleBotResponseMessage(parsedData);
+            if (window._botResponseHandler) {
+                window.removeEventListener('message', window._botResponseHandler);
+                window._botResponseHandler = null;
             }
-        } catch (e) {
-            console.error('Ошибка обработки сообщения от бота:', e);
-        }
+            resolve(handleDemoMode(action, data));
+        }, 3000); // Уменьшаем таймаут до 3 секунд
     });
-}
-
-function handleBotResponseMessage(response) {
-    console.log('Обработка ответа от бота:', response);
-    
-    if (response && response.success) {
-        // Обновляем данные с сервера
-        if (response.user) {
-            userData.balance = response.user.balance || userData.balance;
-            userData.experience = response.user.experience || userData.experience;
-            userData.level = response.user.level || userData.level;
-        }
-        
-        if (response.inventory) {
-            inventoryData = response.inventory;
-        }
-        
-        if (response.cases) {
-            casesData = response.cases;
-        }
-        
-        // Обновляем UI
-        updateUI();
-        
-        console.log('Данные обновлены с сервера');
-    }
 }
 
 // Обработка действий в демо-режиме
@@ -420,6 +405,8 @@ function handleDemoMode(action, data) {
             }
             
             const wonItem = generateWonItem(caseItem);
+            
+            // Сразу обновляем баланс локально
             userData.balance -= caseItem.price;
             
             // Добавляем предмет в инвентарь
@@ -457,6 +444,8 @@ function handleDemoMode(action, data) {
             }
             
             const soldItem = inventoryData[itemIndex];
+            
+            // Сразу обновляем баланс локально
             userData.balance += soldItem.price;
             
             // Удаляем предмет из инвентаря
@@ -494,17 +483,6 @@ function handleDemoMode(action, data) {
     }
 }
 
-// Сохранение данных в localStorage
-function saveToLocalStorage() {
-    const data = {
-        balance: userData.balance,
-        experience: userData.experience,
-        level: userData.level,
-        inventory: inventoryData
-    };
-    localStorage.setItem('minecraftCaseData', JSON.stringify(data));
-}
-
 // Обновление интерфейса
 function updateUI() {
     if (elements.balance) {
@@ -514,7 +492,7 @@ function updateUI() {
     renderInventory();
 }
 
-// Отрисовка кейсов с превью предметов
+// Отрисовка кейсов
 function renderCases() {
     console.log('Отрисовка кейсов...');
     if (!elements.casesGrid) return;
@@ -624,7 +602,7 @@ function renderInventory() {
     console.log('Инвентарь отрисован:', inventoryData.length, 'предметов');
 }
 
-// Открытие модального окна кейса
+// Открытие модального окна кейса - УЛУЧШЕННАЯ ВЕРСИЯ
 function openCaseModal(caseItem) {
     console.log('Открытие модального окна кейса:', caseItem.name);
     currentCase = caseItem;
@@ -650,7 +628,7 @@ function openCaseModal(caseItem) {
     // Создаем предпросмотр предметов
     createCaseItemsPreview(caseItem);
     
-    // Подготавливаем рулетку
+    // Подготавливаем рулетку СРАЗУ
     prepareRouletteForCase(caseItem);
     
     showModal(elements.caseModal);
@@ -693,13 +671,12 @@ function createCaseItemsPreview(caseItem) {
     });
 }
 
-// Подготовка рулетки для кейса
+// Подготовка рулетки для кейса - УЛУЧШЕННАЯ ВЕРСИЯ
 function prepareRouletteForCase(caseItem) {
     console.log('Подготовка рулетки для кейса:', caseItem.name);
     
     // Генерируем начальную последовательность предметов
     rouletteItems = generateInitialRouletteSequence(caseItem);
-    console.log('Сгенерирована начальная последовательность:', rouletteItems.length, 'предметов');
     
     // Сбрасываем позицию
     scrollPosition = 0;
@@ -722,9 +699,7 @@ function prepareRouletteForCase(caseItem) {
         
         elements.itemsTrack.style.transform = `translateX(${initialPosition}px)`;
         elements.itemsTrack.style.transition = 'none';
-        
-        console.log('Рулетка центрирована, позиция:', initialPosition);
-    }, 100);
+    }, 50);
 }
 
 // Генерация начальной последовательности для рулетки
@@ -774,15 +749,13 @@ function renderRouletteItems() {
         
         elements.itemsTrack.appendChild(rouletteItem);
     });
-    
-    console.log('Рулетка отрисована:', rouletteItems.length, 'предметов');
 }
 
-// Открытие кейса
+// Открытие кейса - УЛУЧШЕННАЯ ВЕРСИЯ БЕЗ ЗАДЕРЖЕК
 async function openCase() {
     console.log('Открытие кейса...');
     if (!currentCase || !userData || isOpening) {
-        console.log('Не могу открыть кейс:', { currentCase, userData, isOpening });
+        console.log('Не могу открыть кейс');
         return;
     }
     
@@ -798,11 +771,20 @@ async function openCase() {
     elements.openCaseBtn.innerHTML = '⏳ Открывается...';
     isOpening = true;
     
+    // ЗАПУСКАЕМ АНИМАЦИЮ РУЛЕТКИ СРАЗУ
+    const animationPromise = startRouletteAnimation();
+    
+    // ПАРАЛЛЕЛЬНО отправляем запрос на сервер
+    const serverPromise = sendDataToBot('open_case', {
+        case_id: currentCase.id
+    });
+    
     try {
-        // Отправляем запрос на открытие кейса на сервер
-        const response = await sendDataToBot('open_case', {
-            case_id: currentCase.id
-        });
+        // Ждем завершения анимации рулетки (это происходит быстро)
+        await animationPromise;
+        
+        // Затем ждем ответ от сервера
+        const response = await serverPromise;
         
         console.log('Ответ от сервера:', response);
         
@@ -816,35 +798,36 @@ async function openCase() {
             // Обновляем инвентарь
             if (response.inventory) {
                 inventoryData = response.inventory;
-            } else if (currentItem) {
-                inventoryData.unshift({
-                    ...currentItem,
-                    obtained_at: new Date().toISOString()
-                });
             }
             
-            console.log('Кейс успешно открыт:', response);
+            // Сохраняем в localStorage
+            saveToLocalStorage();
             
-            // Запускаем рулетку
-            await startRouletteForCase(currentItem);
+            console.log('Кейс успешно открыт');
             
-            // Синхронизируем UI
+            // Показываем результат
+            showResult(currentItem);
+            
+            // Обновляем UI
             updateUI();
             
         } else {
             console.error('Ошибка открытия кейса:', response?.error);
             alert(response?.error || 'Ошибка при открытии кейса');
             
-            // Восстанавливаем кнопку
-            elements.openCaseBtn.disabled = false;
-            elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${currentCase.price} 💎`;
-            isOpening = false;
+            // Откатываем изменения
+            userData.balance += currentCase.price;
+            updateUI();
         }
         
     } catch (error) {
         console.error('Ошибка при открытии кейса:', error);
         alert('Ошибка соединения с сервером');
         
+        // Откатываем изменения
+        userData.balance += currentCase.price;
+        updateUI();
+    } finally {
         // Восстанавливаем кнопку
         elements.openCaseBtn.disabled = false;
         elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${currentCase.price} 💎`;
@@ -881,10 +864,14 @@ function generateWonItem(caseItem) {
     return randomItem;
 }
 
-// Запуск рулетки для кейса
-function startRouletteForCase(wonItem) {
+// Запуск анимации рулетки - УЛУЧШЕННАЯ БЫСТРАЯ ВЕРСИЯ
+function startRouletteAnimation() {
     return new Promise((resolve) => {
         isRouletteActive = true;
+        
+        // Генерируем выигрышный предмет для анимации
+        const wonItem = generateWonItem(currentCase);
+        currentItem = wonItem;
         
         // Генерируем полную последовательность с выигрышным предметом в центре
         rouletteItems = generateFullRouletteSequence(wonItem);
@@ -893,22 +880,20 @@ function startRouletteForCase(wonItem) {
         winningItemIndex = Math.floor(rouletteItems.length / 2);
         rouletteItems[winningItemIndex] = {...wonItem};
         
-        console.log('Выигрышный предмет в центре на позиции:', winningItemIndex);
-        
         // Отрисовываем предметы заново
         renderRouletteItems();
         
         // Даем браузеру время на отрисовку
         setTimeout(() => {
-            startRouletteAnimation(resolve);
-        }, 100);
+            startRouletteAnimationSequence(resolve);
+        }, 50);
     });
 }
 
 // Генерация полной последовательности для анимации
 function generateFullRouletteSequence(wonItem) {
     const sequence = [];
-    const sequenceLength = 50;
+    const sequenceLength = 40; // Уменьшаем для более быстрой анимации
     
     // Добавляем случайные предметы в начале
     for (let i = 0; i < sequenceLength / 2 - 5; i++) {
@@ -936,14 +921,14 @@ function generateFullRouletteSequence(wonItem) {
     return sequence;
 }
 
-// Запуск анимации рулетки
-function startRouletteAnimation(resolve) {
+// Запуск анимации рулетки - БЫСТРАЯ ВЕРСИЯ
+function startRouletteAnimationSequence(resolve) {
     console.log('Запуск анимации рулетки');
     isScrolling = true;
     
     const rouletteContainer = elements.rouletteContainer;
     if (!rouletteContainer) {
-        console.error('Контейнер рулетки не найден');
+        resolve();
         return;
     }
     
@@ -962,42 +947,36 @@ function startRouletteAnimation(resolve) {
     // Даем браузеру время на отрисовку
     setTimeout(() => {
         animationStartTime = Date.now();
-        const animationDuration = 3000 + Math.random() * 2000;
+        const animationDuration = 2000; // Уменьшаем до 2 секунд
         
         animateRoulette(startPosition, finalPosition, animationDuration, resolve);
-    }, 100);
+    }, 50);
 }
 
-// Анимация рулетки
+// Анимация рулетки - ОПТИМИЗИРОВАННАЯ
 function animateRoulette(startPos, endPos, duration, resolve) {
-    if (!isRouletteActive) return;
+    if (!isRouletteActive) {
+        resolve();
+        return;
+    }
     
     const elapsed = Date.now() - animationStartTime;
     let progress = Math.min(elapsed / duration, 1);
     
-    // Разные фазы анимации для реалистичности
+    // Упрощенные фазы анимации для скорости
     let easedProgress;
     
-    if (progress < 0.2) {
-        const phaseProgress = progress / 0.2;
-        easedProgress = easeOutSine(phaseProgress) * 0.2;
-    } else if (progress < 0.6) {
-        const phaseProgress = (progress - 0.2) / 0.4;
-        easedProgress = 0.2 + phaseProgress * 0.4;
-    } else if (progress < 0.8) {
-        const phaseProgress = (progress - 0.6) / 0.2;
-        easedProgress = 0.6 + easeOutCubic(phaseProgress) * 0.2;
+    if (progress < 0.3) {
+        easedProgress = easeOutSine(progress / 0.3) * 0.3;
+    } else if (progress < 0.7) {
+        easedProgress = 0.3 + (progress - 0.3) * 0.4;
     } else {
-        const phaseProgress = (progress - 0.8) / 0.2;
-        easedProgress = 0.8 + easeInOutBack(phaseProgress) * 0.2;
+        easedProgress = 0.7 + easeOutCubic((progress - 0.7) / 0.3) * 0.3;
     }
     
     const currentPos = startPos + (endPos - startPos) * easedProgress;
     
     if (elements.itemsTrack) {
-        if (progress > 0.85) {
-            elements.itemsTrack.style.transition = 'transform 0.1s linear';
-        }
         elements.itemsTrack.style.transform = `translateX(${currentPos}px)`;
     }
     
@@ -1041,7 +1020,7 @@ function updateCenterZoneItem() {
     }
 }
 
-// Завершение анимации рулетки
+// Завершение анимации рулетки - БЫСТРАЯ ВЕРСИЯ
 function finishRouletteAnimation(resolve) {
     console.log('Завершение анимации рулетки');
     isScrolling = false;
@@ -1050,53 +1029,14 @@ function finishRouletteAnimation(resolve) {
         const highlightedItem = document.querySelector('.roulette-item.highlighted');
         if (highlightedItem) {
             highlightedItem.classList.add('winning-spin');
-            
-            const itemIndex = parseInt(highlightedItem.dataset.index);
-            const wonItemData = rouletteItems[itemIndex];
-            
-            if (wonItemData && currentItem) {
-                setTimeout(() => {
-                    hideModal(elements.caseModal);
-                    
-                    if (userData.balance >= currentCase.price) {
-                        elements.openCaseBtn.disabled = false;
-                        elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${currentCase.price} 💎`;
-                    } else {
-                        elements.openCaseBtn.disabled = true;
-                        elements.openCaseBtn.innerHTML = '❌ Недостаточно 💎';
-                    }
-                    
-                    showResult(currentItem);
-                    isOpening = false;
-                    isRouletteActive = false;
-                    resolve();
-                }, 1500);
-            } else {
-                handleRouletteError(resolve);
-            }
-        } else {
-            handleRouletteError(resolve);
-        }
-    }, 500);
-}
-
-// Обработка ошибки рулетки
-function handleRouletteError(resolve) {
-    setTimeout(() => {
-        hideModal(elements.caseModal);
-        
-        if (userData.balance >= currentCase?.price) {
-            elements.openCaseBtn.disabled = false;
-            elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${currentCase?.price || 0} 💎`;
         }
         
-        if (currentItem) {
-            showResult(currentItem);
-        }
-        isOpening = false;
-        isRouletteActive = false;
-        resolve();
-    }, 1000);
+        setTimeout(() => {
+            hideModal(elements.caseModal);
+            isRouletteActive = false;
+            resolve();
+        }, 800); // Уменьшаем задержку
+    }, 300);
 }
 
 // Показ результата
@@ -1147,7 +1087,7 @@ function createParticles() {
             left: 50%;
             top: 50%;
             opacity: 0;
-            animation: particleExplode 1.5s ease-out ${i * 0.05}s forwards;
+            animation: particleExplode 1s ease-out ${i * 0.03}s forwards;
             --end-x: ${Math.cos(angle) * distance}px;
             --end-y: ${Math.sin(angle) * distance}px;
             filter: drop-shadow(0 0 5px ${color});
@@ -1183,23 +1123,15 @@ function openInventoryModal() {
 
 // Управление модальными окнами
 function showModal(modal) {
-    if (!modal) {
-        console.error('Модальное окно не найдено');
-        return;
-    }
+    if (!modal) return;
     modal.classList.add('active');
     document.body.style.overflow = 'hidden';
-    console.log('Показано модальное окно:', modal.id);
 }
 
 function hideModal(modal) {
-    if (!modal) {
-        console.error('Модальное окно не найдено');
-        return;
-    }
+    if (!modal) return;
     modal.classList.remove('active');
     document.body.style.overflow = 'auto';
-    console.log('Скрыто модальное окно:', modal.id);
 }
 
 function showLoading() {
@@ -1226,7 +1158,6 @@ function initEventListeners() {
     
     if (elements.inventoryBtn) {
         elements.inventoryBtn.addEventListener('click', openInventoryModal);
-        console.log('Кнопка инвентаря настроена');
     }
     
     if (elements.closeModal) {
@@ -1256,7 +1187,6 @@ function initEventListeners() {
     
     if (elements.openCaseBtn) {
         elements.openCaseBtn.addEventListener('click', openCase);
-        console.log('Кнопка открытия кейса настроена');
     }
     
     // Закрытие модальных окон по клику на overlay
