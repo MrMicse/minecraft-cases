@@ -45,7 +45,7 @@ def init_db():
         username TEXT,
         first_name TEXT,
         last_name TEXT,
-        balance INTEGER DEFAULT 1000,
+        balance INTEGER DEFAULT 10000, -- Увеличено с 1000 до 10000
         experience INTEGER DEFAULT 0,
         level INTEGER DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -228,7 +228,7 @@ def get_user(user_id: int) -> Dict:
     if not user_data:
         cursor.execute(
             """INSERT INTO users (user_id, balance, experience, level, last_login) 
-               VALUES (?, 1000, 0, 1, CURRENT_TIMESTAMP)""",
+               VALUES (?, 10000, 0, 1, CURRENT_TIMESTAMP)""",
             (user_id,)
         )
         conn.commit()
@@ -236,7 +236,7 @@ def get_user(user_id: int) -> Dict:
         # Создаем начальную транзакцию
         cursor.execute(
             """INSERT INTO transactions (user_id, type, amount, description) 
-               VALUES (?, 'reward', 1000, 'Стартовый бонус')""",
+               VALUES (?, 'reward', 10000, 'Стартовый бонус')""",
             (user_id,)
         )
         conn.commit()
@@ -753,7 +753,11 @@ async def handle_web_app_data(message: Message):
             
             response = {
                 'success': True,
-                'user': user,
+                'user': {
+                    'balance': user['balance'],
+                    'experience': user['experience'],
+                    'level': user['level']
+                },
                 'inventory': inventory,
                 'cases': cases,
                 'config': {

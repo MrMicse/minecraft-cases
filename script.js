@@ -7,7 +7,7 @@ if (tg) {
 
 // Глобальные переменные
 let userData = {
-    balance: 1000,
+    balance: 10000, // Стартовый баланс 10000
     inventory: []
 };
 
@@ -141,6 +141,89 @@ async function initApp() {
     console.log('Инициализация приложения...');
     showLoading();
     
+    try {
+        // Пытаемся получить данные из Telegram Web App
+        if (tg && tg.initData) {
+            await syncWithServer();
+        } else {
+            // Если нет Telegram Web App, используем локальные данные
+            loadLocalData();
+        }
+    } catch (error) {
+        console.error('Ошибка инициализации:', error);
+        loadLocalData();
+    }
+    
+    updateUI();
+    
+    setTimeout(() => {
+        hideLoading();
+        console.log('Приложение загружено!');
+    }, 1000);
+}
+
+// Синхронизация с сервером через Telegram Web App
+async function syncWithServer() {
+    console.log('Синхронизация с сервером...');
+    
+    try {
+        // Отправляем запрос на синхронизацию
+        const response = await sendDataToBot('init', {});
+        
+        if (response && response.user) {
+            // Используем данные с сервера
+            userData.balance = response.user.balance || 10000;
+            userData.inventory = response.inventory || [];
+            inventoryData = response.inventory || [];
+            casesData = response.cases || [];
+            
+            console.log('Данные синхронизированы с сервером:', {
+                balance: userData.balance,
+                inventoryCount: inventoryData.length,
+                casesCount: casesData.length
+            });
+        } else {
+            // Если нет ответа от сервера, загружаем локальные данные
+            loadLocalData();
+        }
+    } catch (error) {
+        console.error('Ошибка синхронизации:', error);
+        loadLocalData();
+    }
+}
+
+// Отправка данных боту через Web App
+async function sendDataToBot(action, data) {
+    if (!tg) {
+        console.log('Telegram Web App не доступен');
+        return null;
+    }
+    
+    try {
+        console.log(`Отправка данных боту: ${action}`, data);
+        
+        // Используем Telegram Web App API для отправки данных
+        const result = await tg.sendData(JSON.stringify({
+            action: action,
+            ...data,
+            timestamp: Date.now()
+        }));
+        
+        console.log('Ответ от бота:', result);
+        return result ? JSON.parse(result) : null;
+    } catch (error) {
+        console.error('Ошибка отправки данных боту:', error);
+        return null;
+    }
+}
+
+// Загрузка локальных данных
+function loadLocalData() {
+    console.log('Загрузка локальных данных...');
+    
+    // Очищаем старые данные
+    localStorage.removeItem('minecraft_case_opening_data');
+    
     // Создаем кейсы
     casesData = [
         {
@@ -193,42 +276,18 @@ async function initApp() {
         }
     ];
     
-    // Загружаем сохраненные данные
-    loadUserData();
+    // Начальный баланс 10000
+    userData.balance = 10000;
+    userData.inventory = [];
+    inventoryData = [];
     
-    updateUI();
-    
-    setTimeout(() => {
-        hideLoading();
-        console.log('Приложение загружено!');
-    }, 1000);
-}
-
-// Загрузка данных пользователя
-function loadUserData() {
-    try {
-        const savedData = localStorage.getItem('minecraft_case_opening_data');
-        if (savedData) {
-            const data = JSON.parse(savedData);
-            userData.balance = data.balance || 1000;
-            inventoryData = data.inventory || [];
-            console.log('Данные загружены:', userData);
-        } else {
-            console.log('Сохраненных данных нет, используем значения по умолчанию');
-        }
-    } catch (error) {
-        console.log('Ошибка загрузки данных:', error);
-    }
+    console.log('Локальные данные загружены');
 }
 
 // Сохранение данных пользователя
 function saveUserData() {
-    const data = {
-        balance: userData.balance,
-        inventory: inventoryData
-    };
-    localStorage.setItem('minecraft_case_opening_data', JSON.stringify(data));
-    console.log('Данные сохранены:', data);
+    // Больше не сохраняем в localStorage, так как синхронизируемся с сервером
+    console.log('Сохранение данных отключено (синхронизация с сервером)');
 }
 
 // Обновление интерфейса
@@ -236,13 +295,17 @@ function updateUI() {
     elements.balance.textContent = userData.balance.toLocaleString();
     renderCases();
     renderInventory();
-    saveUserData();
 }
 
 // Отрисовка кейсов с превью предметов
 function renderCases() {
     console.log('Отрисовка кейсов...');
     elements.casesGrid.innerHTML = '';
+    
+    // Если нет данных о кейсах, создаем дефолтные
+    if (!casesData || casesData.length === 0) {
+        loadLocalData();
+    }
     
     casesData.forEach((caseItem, index) => {
         const caseCard = document.createElement('div');
@@ -537,21 +600,66 @@ async function openCase() {
     }
     
     console.log('Списываем средства...');
-    // Списание средств
-    userData.balance -= currentCase.price;
-    elements.balance.textContent = userData.balance.toLocaleString();
-    
-    // Отключаем кнопку открытия
-    elements.openCaseBtn.disabled = true;
-    elements.openCaseBtn.innerHTML = '⏳ Открывается...';
     
     // Генерируем выигрышный предмет
     const wonItem = generateWonItem(currentCase);
     currentItem = wonItem;
     console.log('Выигрышный предмет:', wonItem);
     
+    // Отключаем кнопку открытия
+    elements.openCaseBtn.disabled = true;
+    elements.openCaseBtn.innerHTML = '⏳ Открывается...';
+    
+    // Если есть Telegram Web App, синхронизируем с сервером
+    if (tg && tg.initData) {
+        try {
+            // Отправляем запрос на открытие кейса
+            const response = await sendDataToBot('open_case', {
+                case_id: currentCase.id
+            });
+            
+            if (response && response.success) {
+                // Обновляем данные с сервера
+                userData.balance = response.new_balance;
+                currentItem = response.item;
+                
+                // Добавляем предмет в локальный инвентарь
+                inventoryData.unshift({
+                    ...currentItem,
+                    obtained_at: new Date().toISOString()
+                });
+                
+                console.log('Кейс открыт через сервер:', response);
+            } else {
+                // Если ошибка с сервером, используем локальную логику
+                handleLocalCaseOpening(wonItem);
+            }
+        } catch (error) {
+            console.error('Ошибка открытия кейса через сервер:', error);
+            handleLocalCaseOpening(wonItem);
+        }
+    } else {
+        // Если нет Telegram Web App, используем локальную логику
+        handleLocalCaseOpening(wonItem);
+    }
+    
     // Запускаем рулетку
-    await startRouletteForCase(wonItem);
+    await startRouletteForCase(currentItem);
+}
+
+// Обработка открытия кейса локально
+function handleLocalCaseOpening(wonItem) {
+    // Списание средств
+    userData.balance -= currentCase.price;
+    elements.balance.textContent = userData.balance.toLocaleString();
+    
+    // Добавляем предмет в инвентарь
+    inventoryData.unshift({
+        ...wonItem,
+        obtained_at: new Date().toISOString()
+    });
+    
+    console.log('Кейс открыт локально');
 }
 
 // Генерация выигрышного предмета
@@ -780,14 +888,13 @@ function finishRouletteAnimation(resolve) {
     console.log('Завершение анимации рулетки');
     isScrolling = false;
     
-    // Финальная корректировка позиции для точного центрирования
+    // Финальная корректировка позиции
     setTimeout(() => {
         // Добавляем анимацию выигрыша на центральном предмете
         const highlightedItem = document.querySelector('.roulette-item.highlighted');
         if (highlightedItem) {
             highlightedItem.classList.add('winning-spin');
             
-            // Получаем данные выигрышного предмета
             const itemName = highlightedItem.querySelector('.roulette-item-name').textContent;
             const itemIcon = highlightedItem.querySelector('.roulette-item-icon').textContent;
             const itemIndex = parseInt(highlightedItem.dataset.index);
@@ -797,16 +904,7 @@ function finishRouletteAnimation(resolve) {
             
             if (wonItemData) {
                 currentItem = wonItemData;
-                
                 console.log('Выигрышный предмет:', currentItem);
-                
-                // Добавляем предмет в инвентарь
-                inventoryData.unshift({
-                    ...currentItem,
-                    obtained_at: new Date().toISOString()
-                });
-                
-                saveUserData();
                 
                 // Показываем результат через 1.5 секунды
                 setTimeout(() => {
@@ -868,6 +966,9 @@ function showResult(item) {
     elements.resultItemPrice.textContent = item.price.toLocaleString();
     elements.resultItemIcon.textContent = item.icon;
     elements.newBalance.textContent = userData.balance.toLocaleString();
+    
+    // Обновляем UI
+    updateUI();
     
     // Добавляем эффект частиц
     createParticles();
@@ -983,7 +1084,6 @@ function addTestItems() {
             { ...minecraftItems.legendary[0], rarity: 'legendary', obtained_at: new Date().toISOString() }
         ];
         renderInventory();
-        saveUserData();
         alert('Тестовые предметы добавлены!');
     }
 }
@@ -1061,7 +1161,9 @@ if (tg) {
             if (parsedData.user) {
                 userData = parsedData.user;
                 inventoryData = parsedData.inventory || [];
+                casesData = parsedData.cases || [];
                 updateUI();
+                console.log('Данные получены от бота:', userData);
             }
         } catch (error) {
             console.error('Error parsing web app data:', error);
