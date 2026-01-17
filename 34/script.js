@@ -6,9 +6,6 @@ const API_BASE = (new URLSearchParams(location.search).get('api')
     || localStorage.getItem('API_BASE')
     || 'https://apparel-drives-possibly-campaign.trycloudflare.com').replace(/\/+$/, '');
 
-// Demo mode is allowed only when explicitly enabled (?demo=1) or when Telegram WebApp is unavailable.
-const DEMO_MODE = new URLSearchParams(location.search).get('demo') === '1';
-
 
 // ====== LocalStorage cache busting (forces reset for all users after update) ======
 const APP_STORAGE_KEY = 'minecraftCaseData';
@@ -45,9 +42,6 @@ let userData = {
     experience: 0,
     level: 1
 };
-
-// Server-provided config (e.g., is_admin)
-let appConfig = {};
 
 let casesData = [];
 let inventoryData = [];
@@ -246,8 +240,6 @@ async function syncWithServer() {
             userData.balance = response.user.balance || 0;
             userData.experience = response.user.experience || 0;
             userData.level = response.user.level || 1;
-
-            appConfig = response.config || {};
             
             inventoryData = response.inventory || [];
             casesData = response.cases || [];
@@ -260,43 +252,16 @@ async function syncWithServer() {
                 inventoryCount: inventoryData.length,
                 casesCount: casesData.length
             });
-
-            // Админ-хелперы (не светим в UI, но удобно дергать из консоли)
-            if (appConfig.is_admin) {
-                window.adminResetAllBalances = async (balance = (appConfig.default_balance ?? 10000)) => {
-                    const resp = await sendDataToBot('admin_reset_all_balances', { balance });
-                    if (resp?.success) {
-                        console.log(`✅ Баланс всем установлен: ${resp.balance_set} (затронуто: ${resp.affected})`);
-                        // Подтягиваем актуальные данные для админа
-                        await syncWithServer();
-                        updateUI();
-                    } else {
-                        console.error('❌ Не удалось сбросить баланс:', resp?.error);
-                        alert(resp?.error || 'Не удалось выполнить операцию');
-                    }
-                    return resp;
-                };
-                console.log('👑 Админ-режим: доступна функция window.adminResetAllBalances(10000)');
-            }
             
             return response;
         } else {
             console.error('Ошибка синхронизации:', response?.error);
-            // В Telegram не уходим в демо автоматически, чтобы не разъезжались балансы.
-            if (!tg || DEMO_MODE) {
-                loadDemoData();
-            } else {
-                alert('Нет соединения с сервером. Попробуйте позже или перезапустите приложение.');
-            }
+            loadDemoData();
             return null;
         }
     } catch (error) {
         console.error('Ошибка синхронизации:', error);
-        if (!tg || DEMO_MODE) {
-            loadDemoData();
-        } else {
-            alert('Нет соединения с сервером. Попробуйте позже или перезапустите приложение.');
-        }
+        loadDemoData();
         return null;
     }
 }
@@ -397,7 +362,6 @@ function loadDemoData() {
 // Отправка данных боту через Web App - УПРОЩЕННАЯ ВЕРСИЯ
 async function sendDataToBot(action, data) {
     // Если Telegram Web App недоступен — работаем в демо-режиме
-    // В Telegram демо разрешаем только при явном ?demo=1
     if (!tg) {
         console.log('Telegram Web App не доступен, используем демо-режим');
         return handleDemoMode(action, data);
@@ -425,22 +389,20 @@ async function sendDataToBot(action, data) {
         if (!response.ok) {
             const text = await response.text().catch(() => '');
             console.error('HTTP API error:', response.status, text);
-            if (DEMO_MODE) return handleDemoMode(action, data);
-            return { success: false, error: 'Сервер недоступен' };
+            // Если сервер недоступен — уходим в демо, чтобы приложение не "умерло"
+            return handleDemoMode(action, data);
         }
 
         const json = await response.json().catch(() => null);
         if (!json) {
             console.error('Не удалось распарсить ответ сервера');
-            if (DEMO_MODE) return handleDemoMode(action, data);
-            return { success: false, error: 'Некорректный ответ сервера' };
+            return handleDemoMode(action, data);
         }
 
         return json;
     } catch (error) {
         console.error('Ошибка запроса к API:', error);
-        if (DEMO_MODE) return handleDemoMode(action, data);
-        return { success: false, error: 'Ошибка сети' };
+        return handleDemoMode(action, data);
     }
 }
 

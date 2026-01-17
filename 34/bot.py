@@ -211,8 +211,7 @@ def init_db():
     
     conn.commit()
 
-    # ВАЖНО: НЕ сбрасываем баланс всем пользователям при каждом старте.
-    # Массовый сброс выполняется отдельной админ-командой через HTTP API.
+    reset_all_user_balances(cursor)
     
     # Добавляем тестовые данные только если таблицы пустые
     cursor.execute("SELECT COUNT(*) FROM items")
@@ -226,17 +225,6 @@ def init_db():
 def reset_all_user_balances(cursor, balance: int = 10000) -> None:
     """Сбросить баланс всем пользователям до заданного значения."""
     cursor.execute("UPDATE users SET balance = ?", (balance,))
-
-
-def admin_set_all_user_balances(balance: int = 10000) -> int:
-    """Установить баланс всем пользователям. Возвращает количество затронутых строк."""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute("UPDATE users SET balance = ?", (int(balance),))
-    affected = cursor.rowcount if cursor.rowcount is not None else 0
-    conn.commit()
-    conn.close()
-    return affected
 
 def add_initial_data(cursor):
     """Добавление начальных данных в БД"""
@@ -754,10 +742,7 @@ async def api_webapp(request: web.Request) -> web.Response:
                 "min_bet": 10,
                 "max_bet": 10000,
                 "daily_bonus": 100,
-                "version": "1.0.0",
-                "user_id": user_id,
-                "is_admin": bool(ADMIN_ID) and user_id == ADMIN_ID,
-                "default_balance": 10000
+                "version": "1.0.0"
             }
             return web.json_response(webapp_data)
 
@@ -767,25 +752,7 @@ async def api_webapp(request: web.Request) -> web.Response:
                 "success": True,
                 "balance": user["balance"],
                 "experience": user["experience"],
-                "level": user["level"],
-                "is_admin": bool(ADMIN_ID) and user_id == ADMIN_ID
-            })
-
-        if action == "admin_reset_all_balances":
-            # Только админ может массово менять баланс
-            if not (bool(ADMIN_ID) and user_id == ADMIN_ID):
-                return web.json_response({"success": False, "error": "Недостаточно прав"}, status=403)
-
-            new_balance = int(body.get("balance", 10000))
-            # простая защита от случайных огромных значений
-            if new_balance < 0 or new_balance > 1_000_000_000:
-                return web.json_response({"success": False, "error": "Некорректное значение balance"}, status=400)
-
-            affected = admin_set_all_user_balances(new_balance)
-            return web.json_response({
-                "success": True,
-                "balance_set": new_balance,
-                "affected": affected
+                "level": user["level"]
             })
 
         if action == "open_case":
