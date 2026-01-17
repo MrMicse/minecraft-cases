@@ -438,6 +438,24 @@ def open_case(user_id: int, case_id: int) -> Dict:
         (experience_gained, user_id)
     )
     
+    # Проверяем повышение уровня
+    cursor.execute(
+        "SELECT experience, level FROM users WHERE user_id = ?",
+        (user_id,)
+    )
+    user_exp, user_level = cursor.fetchone()
+    
+    # Проверяем нужно ли повысить уровень (1000 опыта за уровень)
+    new_level = user_level
+    while user_exp >= new_level * 1000:
+        new_level += 1
+    
+    if new_level > user_level:
+        cursor.execute(
+            "UPDATE users SET level = ? WHERE user_id = ?",
+            (new_level, user_id)
+        )
+    
     # Получаем обновленные данные пользователя
     cursor.execute(
         "SELECT balance, experience, level FROM users WHERE user_id = ?",
@@ -454,7 +472,9 @@ def open_case(user_id: int, case_id: int) -> Dict:
         "new_balance": updated_user[0],
         "experience_gained": experience_gained,
         "case_price": case_price,
-        "inventory_id": inventory_id
+        "inventory_id": inventory_id,
+        "experience": updated_user[1],
+        "level": updated_user[2]
     }
 
 # Обработчики команд
@@ -702,6 +722,8 @@ async def handle_web_app_data(message: Message):
     """Обработка данных из Web App"""
     try:
         print(f"🌐 Получены данные из Web App от пользователя {message.from_user.id}")
+        print(f"📋 Данные: {message.web_app_data.data}")
+        
         data = json.loads(message.web_app_data.data)
         user_id = message.from_user.id
         
@@ -728,7 +750,13 @@ async def handle_web_app_data(message: Message):
                 }
             }
             
-            await message.answer(json.dumps(response))
+            print(f"📤 Отправка данных инициализации: {json.dumps(response)[:200]}...")
+            
+            # Отправляем ответ
+            await message.answer(
+                json.dumps(response),
+                parse_mode=None  # Важно: не использовать HTML разметку
+            )
             print(f"📤 Отправлены данные инициализации пользователю {user_id}")
             
         elif data.get('action') == 'open_case':
@@ -740,7 +768,8 @@ async def handle_web_app_data(message: Message):
             
             if 'error' in result:
                 print(f"❌ Ошибка при открытии кейса: {result['error']}")
-                await message.answer(json.dumps({'success': False, 'error': result['error']}))
+                response = {'success': False, 'error': result['error']}
+                await message.answer(json.dumps(response), parse_mode=None)
                 return
             
             # Отправляем уведомление для редких предметов
@@ -762,7 +791,9 @@ async def handle_web_app_data(message: Message):
             inventory = get_inventory(user_id)
             result['inventory'] = inventory
             
-            await message.answer(json.dumps(result))
+            print(f"📤 Отправка результата открытия: {json.dumps(result)[:200]}...")
+            
+            await message.answer(json.dumps(result), parse_mode=None)
             print(f"📤 Отправлен результат открытия кейса пользователю {user_id}")
             
         elif data.get('action') == 'sell_item':
@@ -778,7 +809,8 @@ async def handle_web_app_data(message: Message):
             item_data = cursor.fetchone()
             
             if not item_data:
-                await message.answer(json.dumps({'success': False, 'error': 'Предмет не найден'}))
+                response = {'success': False, 'error': 'Предмет не найден'}
+                await message.answer(json.dumps(response), parse_mode=None)
                 conn.close()
                 return
             
@@ -789,7 +821,8 @@ async def handle_web_app_data(message: Message):
             )
             
             if cursor.rowcount == 0:
-                await message.answer(json.dumps({'success': False, 'error': 'Предмет не найден в инвентаре'}))
+                response = {'success': False, 'error': 'Предмет не найден в инвентаре'}
+                await message.answer(json.dumps(response), parse_mode=None)
                 conn.close()
                 return
             
@@ -809,7 +842,9 @@ async def handle_web_app_data(message: Message):
                 'inventory': inventory
             }
             
-            await message.answer(json.dumps(response))
+            print(f"📤 Отправка результата продажи: {json.dumps(response)[:200]}...")
+            
+            await message.answer(json.dumps(response), parse_mode=None)
             conn.commit()
             conn.close()
             print(f"💰 Пользователь {user_id} продал предмет за {sell_price} 💎")
@@ -831,20 +866,33 @@ async def handle_web_app_data(message: Message):
                 'cases': cases
             }
             
-            await message.answer(json.dumps(response))
+            print(f"📤 Отправка данных синхронизации: {json.dumps(response)[:200]}...")
+            
+            await message.answer(json.dumps(response), parse_mode=None)
             print(f"🔄 Синхронизированы данные пользователя {user_id}")
+            
+        else:
+            # Неизвестное действие
+            response = {'success': False, 'error': 'Неизвестное действие'}
+            await message.answer(json.dumps(response), parse_mode=None)
+            print(f"❌ Неизвестное действие: {data.get('action')}")
             
     except json.JSONDecodeError as e:
         print(f"❌ Ошибка декодирования JSON: {e}")
-        await message.answer(json.dumps({'success': False, 'error': 'Неверный формат данных'}))
+        response = {'success': False, 'error': 'Неверный формат данных'}
+        await message.answer(json.dumps(response), parse_mode=None)
     except Exception as e:
         print(f"❌ Ошибка обработки Web App данных: {e}")
+        import traceback
+        traceback.print_exc()
+        
         if DEBUG:
             error_msg = str(e)
         else:
             error_msg = "Произошла ошибка. Пожалуйста, попробуйте позже."
         
-        await message.answer(json.dumps({'success': False, 'error': error_msg}))
+        response = {'success': False, 'error': error_msg}
+        await message.answer(json.dumps(response), parse_mode=None)
 
 @router.message()
 async def handle_unknown(message: Message):
