@@ -207,7 +207,8 @@ async function syncWithServer() {
         const response = await sendDataToBot('init', {});
         
         if (response && response.success) {
-            userData.balance = response.user.balance || 0;
+            // Используем diamonds из ответа бота
+            userData.balance = response.user.balance || response.user.diamonds || 0;
             userData.experience = response.user.experience || 0;
             userData.level = response.user.level || 1;
             
@@ -218,6 +219,7 @@ async function syncWithServer() {
             
             console.log('Данные синхронизированы с сервером:', {
                 balance: userData.balance,
+                diamonds: response.user.diamonds,
                 inventoryCount: inventoryData.length,
                 casesCount: casesData.length
             });
