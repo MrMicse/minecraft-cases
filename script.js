@@ -9,7 +9,8 @@ if (tg) {
 let userData = {
     balance: 10000,
     inventory: [],
-    userId: null
+    userId: null,
+    username: null
 };
 
 let casesData = [];
@@ -17,16 +18,7 @@ let inventoryData = [];
 let currentCase = null;
 let currentItem = null;
 let isOpening = false;
-
-// Переменные для рулетки
-let scrollPosition = 0;
-let targetScroll = 0;
-let isScrolling = false;
-let rouletteItems = [];
-let winningItemIndex = 0;
-let animationStartTime = 0;
-let isRouletteActive = false;
-let animationPhase = 0;
+let isInitialized = false;
 
 // DOM элементы
 const elements = {
@@ -34,24 +26,16 @@ const elements = {
     casesGrid: document.getElementById('cases-grid'),
     itemsTrack: document.getElementById('items-track'),
     inventoryGrid: document.getElementById('inventory-grid'),
-    
-    // Модальные окна
     caseModal: document.getElementById('case-modal'),
     inventoryModal: document.getElementById('inventory-modal'),
     resultModal: document.getElementById('result-modal'),
     loadingOverlay: document.getElementById('loading'),
-    
-    // Рулетка
     rouletteContainer: document.getElementById('roulette-container'),
-    
-    // Кнопки
     inventoryBtn: document.getElementById('inventory-btn'),
     closeModal: document.getElementById('close-modal'),
     closeInventory: document.getElementById('close-inventory'),
     closeResult: document.getElementById('close-result'),
     openCaseBtn: document.getElementById('open-case-btn'),
-    
-    // Текстовые элементы
     caseName: document.getElementById('case-name'),
     casePriceValue: document.getElementById('case-price-value'),
     caseDescription: document.getElementById('case-description'),
@@ -63,74 +47,12 @@ const elements = {
     newBalance: document.getElementById('new-balance'),
 };
 
-// Minecraft предметы
-const minecraftItems = {
-    common: [
-        { name: "Железный Слиток", icon: "⛓️", price: 50, description: "Базовый ресурс для крафта" },
-        { name: "Уголь", icon: "⚫", price: 30, description: "Топливо и краситель" },
-        { name: "Яблоко", icon: "🍎", price: 40, description: "Восстанавливает голод" },
-        { name: "Хлеб", icon: "🍞", price: 45, description: "Хорошая еда" },
-        { name: "Золотой Слиток", icon: "🟨", price: 80, description: "Редкий ресурс" },
-        { name: "Дубовые Доски", icon: "🪵", price: 20, description: "Строительный материал" },
-        { name: "Камень", icon: "🪨", price: 25, description: "Прочный блок" },
-        { name: "Палка", icon: "〰️", price: 10, description: "Для крафта инструментов" }
-    ],
-    uncommon: [
-        { name: "Алмаз", icon: "💎", price: 150, description: "Ценный минерал" },
-        { name: "Изумруд", icon: "🟩", price: 200, description: "Торговая валюта" },
-        { name: "Железная Кираса", icon: "🛡️", price: 180, description: "Защита от урона" },
-        { name: "Алмазный Меч", icon: "⚔️", price: 250, description: "Мощное оружие" },
-        { name: "Лук", icon: "🏹", price: 120, description: "Дальнобойное оружие" },
-        { name: "Алмазная Кирка", icon: "⛏️", price: 220, description: "Быстрая добыча" },
-        { name: "Золотое Яблоко", icon: "🍏", price: 160, description: "Мощное лечение" },
-        { name: "Око Эндера", icon: "👁️", price: 300, description: "Для поиска крепости" }
-    ],
-    rare: [
-        { name: "Незеритовый Слиток", icon: "🔱", price: 500, description: "Элитный материал" },
-        { name: "Кирокрыло", icon: "🪶", price: 600, description: "Мгновенное перемещение" },
-        { name: "Элитра", icon: "🧥", price: 800, description: "Полеты в мире" },
-        { name: "Золотое Яблоко", icon: "🍏", price: 400, description: "Особое зелье" },
-        { name: "Зачарованная Книга", icon: "📚", price: 350, description: "Мощные чары" },
-        { name: "Плащ Невидимости", icon: "👻", price: 700, description: "Стать невидимым" },
-        { name: "Бесконечный Лук", icon: "🏹", price: 450, description: "Не требует стрел" }
-    ],
-    epic: [
-        { name: "Тотем Бессмертия", icon: "🐦", price: 1000, description: "Спасение от смерти" },
-        { name: "Сердце Моря", icon: "💙", price: 1200, description: "Редкая реликвия" },
-        { name: "Голова Дракона", icon: "🐲", price: 1500, description: "Трофей дракона" },
-        { name: "Кристалл Энда", icon: "💎", price: 900, description: "Восстанавливает дракона" },
-        { name: "Драконье Яйцо", icon: "🥚", price: 2000, description: "Уникальный трофей" },
-        { name: "Зачарованный Золотой Меч", icon: "🗡️", price: 1100, description: "Легендарное оружие" }
-    ],
-    legendary: [
-        { name: "Командный Блок", icon: "🟪", price: 5000, description: "Божественный предмет" },
-        { name: "Меч Незера", icon: "🗡️", price: 3000, description: "Легендарное оружие" },
-        { name: "Корона Власти", icon: "👑", price: 10000, description: "Знак абсолютной власти" },
-        { name: "Артефакт Создателя", icon: "⭐", price: 7500, description: "Сила творения" },
-        { name: "Сфера Бессмертия", icon: "🔮", price: 6000, description: "Вечная жизнь" }
-    ]
-};
-
 // Инициализация приложения
 async function initApp() {
     console.log('Инициализация приложения...');
     showLoading();
     
     try {
-        // Получаем данные из Telegram
-        if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
-            const userId = tg.initDataUnsafe.user.id;
-            console.log('Telegram User ID:', userId);
-            userData.userId = userId;
-            
-            // Загружаем данные с сервера
-            await loadUserDataFromServer();
-        } else {
-            console.log('Telegram не обнаружен, используем локальные данные');
-            // Загружаем локальные данные
-            loadUserDataFromLocal();
-        }
-        
         // Загружаем кейсы
         casesData = [
             {
@@ -183,11 +105,21 @@ async function initApp() {
             }
         ];
         
+        // Получаем данные пользователя
+        await loadUserData();
+        
         updateUI();
+        isInitialized = true;
+        
+        console.log('Данные пользователя:', {
+            balance: userData.balance,
+            inventoryCount: inventoryData.length,
+            userId: userData.userId
+        });
         
     } catch (error) {
         console.error('Ошибка инициализации:', error);
-        // Если произошла ошибка, загружаем локальные данные
+        // Используем локальные данные при ошибке
         loadUserDataFromLocal();
         updateUI();
     }
@@ -198,98 +130,212 @@ async function initApp() {
     }, 1000);
 }
 
-// Загрузка данных пользователя с сервера
-async function loadUserDataFromServer() {
-    console.log('Загрузка данных с сервера...');
+// Загрузка данных пользователя
+async function loadUserData() {
+    console.log('Загрузка данных пользователя...');
     
-    try {
-        if (!tg) {
-            throw new Error('Telegram Web App не доступен');
+    // Сначала пытаемся загрузить из localStorage
+    const localData = loadUserDataFromLocal();
+    
+    // Если есть Telegram Web App, синхронизируем с сервером
+    if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+        userData.userId = tg.initDataUnsafe.user.id;
+        userData.username = tg.initDataUnsafe.user.username || 
+                           tg.initDataUnsafe.user.first_name;
+        
+        console.log('Telegram пользователь:', {
+            id: userData.userId,
+            username: userData.username
+        });
+        
+        try {
+            // Пытаемся получить свежие данные с сервера
+            const serverData = await getServerUserData();
+            
+            if (serverData && serverData.success) {
+                console.log('Получены данные с сервера:', serverData);
+                
+                // Приоритет у серверных данных
+                userData.balance = serverData.user.balance || localData.balance || 10000;
+                
+                // Объединяем инвентари (серверный + локальный)
+                if (serverData.inventory && serverData.inventory.length > 0) {
+                    inventoryData = serverData.inventory;
+                } else if (localData.inventory && localData.inventory.length > 0) {
+                    inventoryData = localData.inventory;
+                }
+                
+                console.log('Используем серверные данные');
+            } else {
+                // Если сервер не ответил, используем локальные данные
+                console.log('Используем локальные данные (сервер не ответил)');
+                userData.balance = localData.balance || 10000;
+                inventoryData = localData.inventory || [];
+            }
+            
+        } catch (error) {
+            console.error('Ошибка загрузки с сервера:', error);
+            // При ошибке используем локальные данные
+            userData.balance = localData.balance || 10000;
+            inventoryData = localData.inventory || [];
         }
         
-        // Отправляем запрос на получение данных пользователя
+        // Сохраняем обновленные данные локально
+        saveUserDataToLocal();
+        
+    } else {
+        // Без Telegram используем только локальные данные
+        console.log('Telegram не обнаружен, используем локальные данные');
+        userData.balance = localData.balance || 10000;
+        inventoryData = localData.inventory || [];
+    }
+}
+
+// Загрузка данных с сервера
+async function getServerUserData() {
+    return new Promise((resolve, reject) => {
+        if (!tg) {
+            reject(new Error('Telegram Web App не доступен'));
+            return;
+        }
+        
         const data = {
             action: 'get_user_data',
             timestamp: Date.now()
         };
         
-        // Используем sendData для отправки данных в бот
+        // Отправляем запрос через sendData
         tg.sendData(JSON.stringify(data));
         
-        console.log('Запрос данных отправлен на сервер');
+        // Ожидаем ответ от бота
+        const handler = (eventData) => {
+            try {
+                const parsedData = JSON.parse(eventData);
+                if (parsedData.success) {
+                    resolve(parsedData);
+                } else {
+                    reject(new Error(parsedData.error || 'Ошибка сервера'));
+                }
+            } catch (error) {
+                reject(error);
+            }
+        };
         
-        // Также загружаем локальные данные на случай проблем с сетью
-        loadUserDataFromLocal();
+        // Добавляем обработчик для получения ответа
+        tg.onEvent('webAppDataReceived', handler);
         
-    } catch (error) {
-        console.error('Ошибка загрузки данных с сервера:', error);
-        throw error;
-    }
+        // Таймаут на случай отсутствия ответа
+        setTimeout(() => {
+            tg.offEvent('webAppDataReceived', handler);
+            reject(new Error('Таймаут ожидания ответа от сервера'));
+        }, 3000);
+    });
 }
 
-// Загрузка данных пользователя из localStorage
+// Загрузка данных из localStorage
 function loadUserDataFromLocal() {
-    console.log('Загрузка локальных данных...');
-    
     try {
         const savedData = localStorage.getItem('minecraft_case_data');
         if (savedData) {
             const data = JSON.parse(savedData);
-            userData.balance = data.balance || 10000;
-            inventoryData = data.inventory || [];
-            userData.userId = data.userId || null;
-            console.log('Локальные данные загружены');
-        } else {
-            // Если данных нет, устанавливаем дефолтные
-            userData.balance = 10000;
-            inventoryData = [];
-            console.log('Используются дефолтные данные');
+            
+            // Проверяем, не устарели ли данные (больше 1 дня)
+            const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+            if (data.timestamp && data.timestamp > oneDayAgo) {
+                console.log('Локальные данные загружены:', {
+                    balance: data.balance,
+                    inventoryCount: data.inventory ? data.inventory.length : 0
+                });
+                return data;
+            } else {
+                console.log('Локальные данные устарели');
+            }
         }
     } catch (error) {
         console.error('Ошибка загрузки локальных данных:', error);
-        userData.balance = 10000;
-        inventoryData = [];
     }
+    
+    return { balance: 10000, inventory: [] };
 }
 
-// Сохранение данных пользователя
-async function saveUserData() {
+// Сохранение данных в localStorage
+function saveUserDataToLocal() {
     try {
-        // Сохраняем локально
         const data = {
             balance: userData.balance,
             inventory: inventoryData,
             userId: userData.userId,
+            username: userData.username,
             timestamp: Date.now()
         };
         
         localStorage.setItem('minecraft_case_data', JSON.stringify(data));
-        console.log('Данные сохранены локально');
-        
-        // Отправляем данные на сервер если доступен Telegram
-        if (tg && userData.userId) {
-            await syncWithServer(data);
-        }
-        
+        console.log('Данные сохранены локально:', {
+            balance: userData.balance,
+            inventoryCount: inventoryData.length
+        });
     } catch (error) {
-        console.error('Ошибка сохранения данных:', error);
+        console.error('Ошибка сохранения локальных данных:', error);
     }
 }
 
 // Синхронизация с сервером
-async function syncWithServer(data) {
+async function syncWithServer() {
+    if (!tg || !userData.userId) {
+        console.log('Синхронизация невозможна: нет Telegram или user_id');
+        return false;
+    }
+    
     try {
         const syncData = {
-            action: 'update_user_data',
-            data: data,
+            action: 'sync_user_data',
+            data: {
+                balance: userData.balance,
+                inventory: inventoryData,
+                userId: userData.userId,
+                username: userData.username
+            },
             timestamp: Date.now()
         };
         
+        console.log('Отправка данных на сервер для синхронизации:', {
+            balance: userData.balance,
+            inventoryCount: inventoryData.length
+        });
+        
+        // Отправляем данные через Telegram
         tg.sendData(JSON.stringify(syncData));
-        console.log('Данные отправлены на сервер');
+        
+        // Ожидаем подтверждения
+        return new Promise((resolve) => {
+            const handler = (eventData) => {
+                try {
+                    const parsedData = JSON.parse(eventData);
+                    if (parsedData.success) {
+                        console.log('Синхронизация успешна:', parsedData.message);
+                        resolve(true);
+                    } else {
+                        console.error('Ошибка синхронизации:', parsedData.error);
+                        resolve(false);
+                    }
+                } catch (error) {
+                    console.error('Ошибка обработки ответа синхронизации:', error);
+                    resolve(false);
+                }
+            };
+            
+            tg.onEvent('webAppDataReceived', handler);
+            
+            setTimeout(() => {
+                tg.offEvent('webAppDataReceived', handler);
+                console.log('Таймаут синхронизации');
+                resolve(false);
+            }, 2000);
+        });
         
     } catch (error) {
         console.error('Ошибка синхронизации с сервером:', error);
+        return false;
     }
 }
 
@@ -302,7 +348,6 @@ function updateUI() {
 
 // Отрисовка кейсов
 function renderCases() {
-    console.log('Отрисовка кейсов...');
     elements.casesGrid.innerHTML = '';
     
     casesData.forEach((caseItem, index) => {
@@ -330,37 +375,198 @@ function renderCases() {
         caseCard.addEventListener('click', () => openCaseModal(caseItem));
         elements.casesGrid.appendChild(caseCard);
     });
-    
-    console.log('Кейсы отрисованы:', casesData.length);
 }
 
 // Получение предметов для превью кейса
 function getPreviewItems(caseItem) {
-    const previewItems = [];
     const allItems = [];
     
+    // Получаем предметы по редкости
+    const minecraftItems = {
+        common: [
+            { name: "Железный Слиток", icon: "⛓️", price: 50, description: "Базовый ресурс для крафта" },
+            { name: "Уголь", icon: "⚫", price: 30, description: "Топливо и краситель" },
+            { name: "Яблоко", icon: "🍎", price: 40, description: "Восстанавливает голод" },
+            { name: "Хлеб", icon: "🍞", price: 45, description: "Хорошая еда" }
+        ],
+        uncommon: [
+            { name: "Алмаз", icon: "💎", price: 150, description: "Ценный минерал" },
+            { name: "Изумруд", icon: "🟩", price: 200, description: "Торговая валюта" },
+            { name: "Железная Кираса", icon: "🛡️", price: 180, description: "Защита от урона" },
+            { name: "Алмазный Меч", icon: "⚔️", price: 250, description: "Мощное оружие" }
+        ],
+        rare: [
+            { name: "Незеритовый Слиток", icon: "🔱", price: 500, description: "Элитный материал" },
+            { name: "Кирокрыло", icon: "🪶", price: 600, description: "Мгновенное перемещение" },
+            { name: "Элитра", icon: "🧥", price: 800, description: "Полеты в мире" }
+        ],
+        epic: [
+            { name: "Тотем Бессмертия", icon: "🐦", price: 1000, description: "Спасение от смерти" },
+            { name: "Сердце Моря", icon: "💙", price: 1200, description: "Редкая реликвия" },
+            { name: "Голова Дракона", icon: "🐲", price: 1500, description: "Трофей дракона" }
+        ],
+        legendary: [
+            { name: "Командный Блок", icon: "🟪", price: 5000, description: "Божественный предмет" },
+            { name: "Меч Незера", icon: "🗡️", price: 3000, description: "Легендарное оружие" },
+            { name: "Корона Власти", icon: "👑", price: 10000, description: "Знак абсолютной власти" }
+        ]
+    };
+    
     for (const [rarity, weight] of Object.entries(caseItem.rarityWeights)) {
-        if (weight > 0) {
-            const items = minecraftItems[rarity] || [];
-            allItems.push(...items);
+        if (weight > 0 && minecraftItems[rarity]) {
+            allItems.push(...minecraftItems[rarity]);
         }
     }
     
     const count = Math.min(4, allItems.length);
     const shuffledItems = [...allItems].sort(() => Math.random() - 0.5);
+    return shuffledItems.slice(0, count);
+}
+
+// Открытие модального окна кейса
+function openCaseModal(caseItem) {
+    currentCase = caseItem;
     
-    for (let i = 0; i < count; i++) {
-        if (shuffledItems[i]) {
-            previewItems.push(shuffledItems[i]);
+    elements.caseName.textContent = caseItem.name;
+    elements.casePriceValue.textContent = caseItem.price;
+    elements.openPrice.textContent = caseItem.price;
+    elements.caseDescription.textContent = caseItem.description;
+    
+    if (userData.balance < caseItem.price) {
+        elements.openCaseBtn.disabled = true;
+        elements.openCaseBtn.innerHTML = '❌ Недостаточно 💎';
+    } else {
+        elements.openCaseBtn.disabled = false;
+        elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${caseItem.price} 💎`;
+    }
+    
+    showModal(elements.caseModal);
+}
+
+// Открытие кейса
+async function openCase() {
+    if (!currentCase || isOpening) return;
+    
+    if (userData.balance < currentCase.price) {
+        alert('❌ Недостаточно алмазов!');
+        return;
+    }
+    
+    isOpening = true;
+    
+    // Списание средств
+    userData.balance -= currentCase.price;
+    elements.balance.textContent = userData.balance.toLocaleString();
+    
+    // Отключаем кнопку
+    elements.openCaseBtn.disabled = true;
+    elements.openCaseBtn.innerHTML = '⏳ Открывается...';
+    
+    // Генерируем предмет
+    const wonItem = generateWonItem(currentCase);
+    currentItem = wonItem;
+    
+    // Добавляем предмет в инвентарь
+    inventoryData.unshift({
+        ...wonItem,
+        obtained_at: new Date().toISOString()
+    });
+    
+    // Сохраняем данные
+    saveUserDataToLocal();
+    
+    // Синхронизируем с сервером
+    const syncSuccess = await syncWithServer();
+    
+    if (!syncSuccess) {
+        console.log('Предупреждение: синхронизация с сервером не удалась');
+    }
+    
+    // Показываем результат
+    setTimeout(() => {
+        showResult(wonItem);
+        isOpening = false;
+        
+        // Восстанавливаем кнопку
+        if (userData.balance >= currentCase.price) {
+            elements.openCaseBtn.disabled = false;
+            elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${currentCase.price} 💎`;
+        } else {
+            elements.openCaseBtn.disabled = true;
+            elements.openCaseBtn.innerHTML = '❌ Недостаточно 💎';
+        }
+    }, 1500);
+}
+
+// Генерация выигрышного предмета
+function generateWonItem(caseItem) {
+    const minecraftItems = {
+        common: [
+            { name: "Железный Слиток", icon: "⛓️", price: 50, description: "Базовый ресурс для крафта", rarity: "common" },
+            { name: "Уголь", icon: "⚫", price: 30, description: "Топливо и краситель", rarity: "common" },
+            { name: "Яблоко", icon: "🍎", price: 40, description: "Восстанавливает голод", rarity: "common" },
+            { name: "Хлеб", icon: "🍞", price: 45, description: "Хорошая еда", rarity: "common" },
+            { name: "Золотой Слиток", icon: "🟨", price: 80, description: "Редкий ресурс", rarity: "common" },
+            { name: "Дубовые Доски", icon: "🪵", price: 20, description: "Строительный материал", rarity: "common" },
+            { name: "Камень", icon: "🪨", price: 25, description: "Прочный блок", rarity: "common" },
+            { name: "Палка", icon: "〰️", price: 10, description: "Для крафта инструментов", rarity: "common" }
+        ],
+        uncommon: [
+            { name: "Алмаз", icon: "💎", price: 150, description: "Ценный минерал", rarity: "uncommon" },
+            { name: "Изумруд", icon: "🟩", price: 200, description: "Торговая валюта", rarity: "uncommon" },
+            { name: "Железная Кираса", icon: "🛡️", price: 180, description: "Защита от урона", rarity: "uncommon" },
+            { name: "Алмазный Меч", icon: "⚔️", price: 250, description: "Мощное оружие", rarity: "uncommon" },
+            { name: "Лук", icon: "🏹", price: 120, description: "Дальнобойное оружие", rarity: "uncommon" },
+            { name: "Алмазная Кирка", icon: "⛏️", price: 220, description: "Быстрая добыча", rarity: "uncommon" },
+            { name: "Золотое Яблоко", icon: "🍏", price: 160, description: "Мощное лечение", rarity: "uncommon" },
+            { name: "Око Эндера", icon: "👁️", price: 300, description: "Для поиска крепости", rarity: "uncommon" }
+        ],
+        rare: [
+            { name: "Незеритовый Слиток", icon: "🔱", price: 500, description: "Элитный материал", rarity: "rare" },
+            { name: "Кирокрыло", icon: "🪶", price: 600, description: "Мгновенное перемещение", rarity: "rare" },
+            { name: "Элитра", icon: "🧥", price: 800, description: "Полеты в мире", rarity: "rare" },
+            { name: "Золотое Яблоко", icon: "🍏", price: 400, description: "Особое зелье", rarity: "rare" },
+            { name: "Зачарованная Книга", icon: "📚", price: 350, description: "Мощные чары", rarity: "rare" },
+            { name: "Плащ Невидимости", icon: "👻", price: 700, description: "Стать невидимым", rarity: "rare" },
+            { name: "Бесконечный Лук", icon: "🏹", price: 450, description: "Не требует стрел", rarity: "rare" }
+        ],
+        epic: [
+            { name: "Тотем Бессмертия", icon: "🐦", price: 1000, description: "Спасение от смерти", rarity: "epic" },
+            { name: "Сердце Моря", icon: "💙", price: 1200, description: "Редкая реликвия", rarity: "epic" },
+            { name: "Голова Дракона", icon: "🐲", price: 1500, description: "Трофей дракона", rarity: "epic" },
+            { name: "Кристалл Энда", icon: "💎", price: 900, description: "Восстанавливает дракона", rarity: "epic" },
+            { name: "Драконье Яйцо", icon: "🥚", price: 2000, description: "Уникальный трофей", rarity: "epic" },
+            { name: "Зачарованный Золотой Меч", icon: "🗡️", price: 1100, description: "Легендарное оружие", rarity: "epic" }
+        ],
+        legendary: [
+            { name: "Командный Блок", icon: "🟪", price: 5000, description: "Божественный предмет", rarity: "legendary" },
+            { name: "Меч Незера", icon: "🗡️", price: 3000, description: "Легендарное оружие", rarity: "legendary" },
+            { name: "Корона Власти", icon: "👑", price: 10000, description: "Знак абсолютной власти", rarity: "legendary" },
+            { name: "Артефакт Создателя", icon: "⭐", price: 7500, description: "Сила творения", rarity: "legendary" },
+            { name: "Сфера Бессмертия", icon: "🔮", price: 6000, description: "Вечная жизнь", rarity: "legendary" }
+        ]
+    };
+    
+    const totalWeight = Object.values(currentCase.rarityWeights).reduce((a, b) => a + b, 0);
+    let randomWeight = Math.random() * totalWeight;
+    
+    let selectedRarity = 'common';
+    for (const [rarity, weight] of Object.entries(currentCase.rarityWeights)) {
+        randomWeight -= weight;
+        if (randomWeight <= 0) {
+            selectedRarity = rarity;
+            break;
         }
     }
     
-    return previewItems;
+    const items = minecraftItems[selectedRarity] || minecraftItems.common;
+    const randomItem = {...items[Math.floor(Math.random() * items.length)]};
+    
+    return randomItem;
 }
 
 // Отрисовка инвентаря
 function renderInventory() {
-    console.log('Отрисовка инвентаря...');
     elements.inventoryGrid.innerHTML = '';
     
     if (inventoryData.length === 0) {
@@ -390,448 +596,12 @@ function renderInventory() {
             </p>
         `;
         
-        itemElement.addEventListener('click', () => viewItem(item));
         elements.inventoryGrid.appendChild(itemElement);
     });
 }
 
-// Открытие модального окна кейса
-function openCaseModal(caseItem) {
-    console.log('Открытие модального окна кейса:', caseItem.name);
-    currentCase = caseItem;
-    
-    isOpening = false;
-    isRouletteActive = false;
-    
-    elements.caseName.textContent = caseItem.name;
-    elements.casePriceValue.textContent = caseItem.price;
-    elements.openPrice.textContent = caseItem.price;
-    elements.caseDescription.textContent = caseItem.description;
-    
-    if (userData.balance < caseItem.price) {
-        elements.openCaseBtn.disabled = true;
-        elements.openCaseBtn.innerHTML = '❌ Недостаточно 💎';
-    } else {
-        elements.openCaseBtn.disabled = false;
-        elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${caseItem.price} 💎`;
-    }
-    
-    createCaseItemsPreview(caseItem);
-    prepareRouletteForCase(caseItem);
-    
-    showModal(elements.caseModal);
-}
-
-// Создание превью предметов в модальном окне
-function createCaseItemsPreview(caseItem) {
-    const previewContainer = document.querySelector('.case-items-preview-modal');
-    if (!previewContainer) return;
-    
-    previewContainer.innerHTML = '';
-    
-    const allItems = [];
-    for (const [rarity, weight] of Object.entries(caseItem.rarityWeights)) {
-        if (weight > 0 && minecraftItems[rarity]) {
-            const items = minecraftItems[rarity].map(item => ({
-                ...item,
-                rarity: rarity
-            }));
-            allItems.push(...items);
-        }
-    }
-    
-    const previewCount = Math.min(6, allItems.length);
-    const shuffledItems = [...allItems].sort(() => Math.random() - 0.5);
-    const previewItems = shuffledItems.slice(0, previewCount);
-    
-    previewItems.forEach(item => {
-        const previewItem = document.createElement('div');
-        previewItem.className = 'preview-item';
-        previewItem.innerHTML = `
-            <div class="preview-item-icon">${item.icon}</div>
-            <div class="preview-item-name">${item.name}</div>
-        `;
-        previewContainer.appendChild(previewItem);
-    });
-}
-
-// Подготовка рулетки для кейса
-function prepareRouletteForCase(caseItem) {
-    console.log('Подготовка рулетки для кейса:', caseItem.name);
-    
-    rouletteItems = generateInitialRouletteSequence(caseItem);
-    
-    scrollPosition = 0;
-    targetScroll = 0;
-    isScrolling = false;
-    
-    renderRouletteItems();
-    
-    setTimeout(() => {
-        if (!elements.rouletteContainer || !elements.itemsTrack) return;
-        
-        const containerWidth = elements.rouletteContainer.clientWidth;
-        const itemWidth = 110;
-        const initialPosition = (containerWidth / 2) - (itemWidth / 2);
-        
-        elements.itemsTrack.style.transform = `translateX(${initialPosition}px)`;
-        elements.itemsTrack.style.transition = 'none';
-    }, 100);
-}
-
-// Генерация начальной последовательности для рулетки
-function generateInitialRouletteSequence(caseItem) {
-    const sequence = [];
-    const sequenceLength = 15;
-    
-    const allItems = [];
-    for (const [rarity, weight] of Object.entries(caseItem.rarityWeights)) {
-        if (weight > 0 && minecraftItems[rarity]) {
-            const items = minecraftItems[rarity];
-            allItems.push(...items.map(item => ({
-                ...item,
-                rarity: rarity
-            })));
-        }
-    }
-    
-    while (sequence.length < sequenceLength) {
-        if (allItems.length === 0) break;
-        const randomItem = {...allItems[Math.floor(Math.random() * allItems.length)]};
-        sequence.push(randomItem);
-    }
-    
-    if (sequence.length < sequenceLength) {
-        const allMinecraftItems = [
-            ...minecraftItems.common,
-            ...minecraftItems.uncommon,
-            ...minecraftItems.rare,
-            ...minecraftItems.epic,
-            ...minecraftItems.legendary
-        ];
-        
-        while (sequence.length < sequenceLength) {
-            const randomItem = {...allMinecraftItems[Math.floor(Math.random() * allMinecraftItems.length)]};
-            randomItem.rarity = 'common';
-            sequence.push(randomItem);
-        }
-    }
-    
-    return sequence;
-}
-
-// Отрисовка предметов в рулетке
-function renderRouletteItems() {
-    console.log('Отрисовка рулетки...');
-    if (!elements.itemsTrack) return;
-    
-    elements.itemsTrack.innerHTML = '';
-    
-    rouletteItems.forEach((item, index) => {
-        const rouletteItem = document.createElement('div');
-        rouletteItem.className = `roulette-item`;
-        rouletteItem.dataset.index = index;
-        
-        rouletteItem.innerHTML = `
-            <div class="roulette-item-icon">${item.icon}</div>
-            <div class="roulette-item-name">${item.name}</div>
-            <div class="roulette-item-rarity ${item.rarity}">${getRarityText(item.rarity)}</div>
-        `;
-        
-        elements.itemsTrack.appendChild(rouletteItem);
-    });
-}
-
-// Открытие модального окна инвентаря
-function openInventoryModal() {
-    console.log('Открытие инвентаря');
-    renderInventory();
-    showModal(elements.inventoryModal);
-}
-
-// Просмотр предмета
-function viewItem(item) {
-    alert(`🎁 ${item.name}\n🎯 Редкость: ${getRarityText(item.rarity)}\n💎 Цена: ${item.price}\n📝 ${item.description}`);
-}
-
-// Открытие кейса
-async function openCase() {
-    console.log('Открытие кейса...');
-    if (!currentCase || !userData || isOpening) {
-        console.log('Не могу открыть кейс:', { currentCase, userData, isOpening });
-        return;
-    }
-    
-    if (userData.balance < currentCase.price) {
-        alert('❌ Недостаточно алмазов!');
-        return;
-    }
-    
-    console.log('Списываем средства...');
-    
-    // Списание средств
-    userData.balance -= currentCase.price;
-    elements.balance.textContent = userData.balance.toLocaleString();
-    
-    // Отключаем кнопку открытия
-    elements.openCaseBtn.disabled = true;
-    elements.openCaseBtn.innerHTML = '⏳ Открывается...';
-    
-    // Генерируем выигрышный предмет
-    const wonItem = generateWonItem(currentCase);
-    currentItem = wonItem;
-    console.log('Выигрышный предмет:', wonItem);
-    
-    // Добавляем предмет в инвентарь
-    inventoryData.unshift({
-        ...wonItem,
-        obtained_at: new Date().toISOString()
-    });
-    
-    // Сохраняем данные (синхронизируем с сервером)
-    await saveUserData();
-    
-    // Запускаем рулетку
-    await startRouletteForCase(wonItem);
-}
-
-// Генерация выигрышного предмета
-function generateWonItem(caseItem) {
-    const totalWeight = Object.values(caseItem.rarityWeights).reduce((a, b) => a + b, 0);
-    let randomWeight = Math.random() * totalWeight;
-    
-    let selectedRarity = 'common';
-    for (const [rarity, weight] of Object.entries(caseItem.rarityWeights)) {
-        randomWeight -= weight;
-        if (randomWeight <= 0) {
-            selectedRarity = rarity;
-            break;
-        }
-    }
-    
-    const itemsByRarity = {
-        common: minecraftItems.common,
-        uncommon: minecraftItems.uncommon,
-        rare: minecraftItems.rare,
-        epic: minecraftItems.epic,
-        legendary: minecraftItems.legendary
-    };
-    
-    const availableItems = itemsByRarity[selectedRarity] || minecraftItems.common;
-    const randomItem = {...availableItems[Math.floor(Math.random() * availableItems.length)]};
-    randomItem.rarity = selectedRarity;
-    
-    return randomItem;
-}
-
-// Запуск рулетки для кейса
-function startRouletteForCase(wonItem) {
-    return new Promise((resolve) => {
-        isOpening = true;
-        isRouletteActive = true;
-        
-        rouletteItems = generateFullRouletteSequence(wonItem);
-        winningItemIndex = Math.floor(rouletteItems.length / 2);
-        rouletteItems[winningItemIndex] = {...wonItem};
-        
-        console.log('Выигрышный предмет в центре на позиции:', winningItemIndex);
-        
-        renderRouletteItems();
-        
-        setTimeout(() => {
-            startRouletteAnimation(resolve);
-        }, 100);
-    });
-}
-
-// Генерация полной последовательности для анимации
-function generateFullRouletteSequence(wonItem) {
-    const sequence = [];
-    const sequenceLength = 50;
-    
-    for (let i = 0; i < sequenceLength / 2 - 5; i++) {
-        const rarities = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
-        const randomRarity = rarities[Math.floor(Math.random() * rarities.length)];
-        const items = minecraftItems[randomRarity] || minecraftItems.common;
-        const randomItem = {...items[Math.floor(Math.random() * items.length)]};
-        randomItem.rarity = randomRarity;
-        sequence.push(randomItem);
-    }
-    
-    sequence.push({...wonItem});
-    
-    for (let i = 0; i < sequenceLength / 2 - 5; i++) {
-        const rarities = ['common', 'uncommon', 'rare'];
-        const randomRarity = rarities[Math.floor(Math.random() * rarities.length)];
-        const items = minecraftItems[randomRarity] || minecraftItems.common;
-        const randomItem = {...items[Math.floor(Math.random() * items.length)]};
-        randomItem.rarity = randomRarity;
-        sequence.push(randomItem);
-    }
-    
-    return sequence;
-}
-
-// Запуск анимации рулетки
-function startRouletteAnimation(resolve) {
-    console.log('Запуск анимации рулетки');
-    isScrolling = true;
-    
-    const rouletteContainer = elements.rouletteContainer;
-    if (!rouletteContainer) {
-        console.error('Контейнер рулетки не найден');
-        return;
-    }
-    
-    const containerWidth = rouletteContainer.clientWidth;
-    const itemWidth = 110;
-    const trackWidth = itemWidth * rouletteItems.length;
-    
-    const startPosition = (containerWidth / 2) - (itemWidth / 2);
-    const targetItemCenter = winningItemIndex * itemWidth + itemWidth / 2;
-    const finalPosition = (containerWidth / 2) - targetItemCenter;
-    
-    if (elements.itemsTrack) {
-        elements.itemsTrack.style.transition = 'none';
-        elements.itemsTrack.style.transform = `translateX(${startPosition}px)`;
-    }
-    
-    setTimeout(() => {
-        animationStartTime = Date.now();
-        const animationDuration = 3000 + Math.random() * 2000;
-        animateRoulette(startPosition, finalPosition, animationDuration, resolve);
-    }, 100);
-}
-
-// Анимация рулетки
-function animateRoulette(startPos, endPos, duration, resolve) {
-    if (!isRouletteActive) return;
-    
-    const elapsed = Date.now() - animationStartTime;
-    let progress = Math.min(elapsed / duration, 1);
-    
-    let easedProgress;
-    
-    if (progress < 0.2) {
-        const phaseProgress = progress / 0.2;
-        easedProgress = Math.sin(phaseProgress * Math.PI / 2) * 0.2;
-    } else if (progress < 0.6) {
-        const phaseProgress = (progress - 0.2) / 0.4;
-        easedProgress = 0.2 + phaseProgress * 0.4;
-    } else if (progress < 0.8) {
-        const phaseProgress = (progress - 0.6) / 0.2;
-        easedProgress = 0.6 + (1 - Math.pow(1 - phaseProgress, 3)) * 0.2;
-    } else {
-        const phaseProgress = (progress - 0.8) / 0.2;
-        const c1 = 1.70158;
-        const c2 = c1 * 1.525;
-        easedProgress = 0.8 + (phaseProgress < 0.5
-            ? (Math.pow(2 * phaseProgress, 2) * ((c2 + 1) * 2 * phaseProgress - c2)) / 2
-            : (Math.pow(2 * phaseProgress - 2, 2) * ((c2 + 1) * (phaseProgress * 2 - 2) + c2) + 2) / 2) * 0.2;
-    }
-    
-    const currentPos = startPos + (endPos - startPos) * easedProgress;
-    
-    if (elements.itemsTrack) {
-        if (progress > 0.85) {
-            elements.itemsTrack.style.transition = 'transform 0.1s linear';
-        }
-        elements.itemsTrack.style.transform = `translateX(${currentPos}px)`;
-    }
-    
-    updateCenterZoneItem();
-    
-    if (progress < 1) {
-        requestAnimationFrame(() => animateRoulette(startPos, endPos, duration, resolve));
-    } else {
-        finishRouletteAnimation(resolve);
-    }
-}
-
-// Обновление подсветки предмета в центре
-function updateCenterZoneItem() {
-    if (!elements.rouletteContainer || !elements.itemsTrack) return;
-    
-    const containerRect = elements.rouletteContainer.getBoundingClientRect();
-    const centerX = containerRect.left + containerRect.width / 2;
-    const zoneWidth = 60;
-    
-    const items = document.querySelectorAll('.roulette-item');
-    let closestItem = null;
-    let closestDistance = Infinity;
-    
-    items.forEach((item) => {
-        const itemRect = item.getBoundingClientRect();
-        const itemCenter = itemRect.left + itemRect.width / 2;
-        const distanceToCenter = Math.abs(itemCenter - centerX);
-        
-        item.classList.remove('highlighted');
-        
-        if (distanceToCenter < zoneWidth && distanceToCenter < closestDistance) {
-            closestDistance = distanceToCenter;
-            closestItem = item;
-        }
-    });
-    
-    if (closestItem && closestDistance < zoneWidth) {
-        closestItem.classList.add('highlighted');
-    }
-}
-
-// Завершение анимации рулетки
-function finishRouletteAnimation(resolve) {
-    console.log('Завершение анимации рулетки');
-    isScrolling = false;
-    
-    setTimeout(() => {
-        const highlightedItem = document.querySelector('.roulette-item.highlighted');
-        if (highlightedItem) {
-            highlightedItem.classList.add('winning-spin');
-            
-            setTimeout(() => {
-                hideModal(elements.caseModal);
-                
-                if (userData.balance >= currentCase.price) {
-                    elements.openCaseBtn.disabled = false;
-                    elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${currentCase.price} 💎`;
-                } else {
-                    elements.openCaseBtn.disabled = true;
-                    elements.openCaseBtn.innerHTML = '❌ Недостаточно 💎';
-                }
-                
-                showResult(currentItem);
-                isOpening = false;
-                isRouletteActive = false;
-                resolve();
-            }, 1500);
-        } else {
-            handleRouletteError(resolve);
-        }
-    }, 500);
-}
-
-// Обработка ошибки рулетки
-function handleRouletteError(resolve) {
-    setTimeout(() => {
-        hideModal(elements.caseModal);
-        
-        if (userData.balance >= currentCase?.price) {
-            elements.openCaseBtn.disabled = false;
-            elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${currentCase?.price || 0} 💎`;
-        }
-        
-        if (currentItem) {
-            showResult(currentItem);
-        }
-        isOpening = false;
-        isRouletteActive = false;
-        resolve();
-    }, 1000);
-}
-
 // Показ результата
 function showResult(item) {
-    console.log('Показ результата:', item);
     elements.resultItemName.textContent = item.name;
     elements.resultItemRarity.textContent = getRarityText(item.rarity);
     elements.resultItemRarity.className = `item-rarity ${item.rarity}`;
@@ -839,53 +609,8 @@ function showResult(item) {
     elements.resultItemIcon.textContent = item.icon;
     elements.newBalance.textContent = userData.balance.toLocaleString();
     
-    updateUI();
-    createParticles();
+    hideModal(elements.caseModal);
     showModal(elements.resultModal);
-}
-
-// Создание частиц для эффекта
-function createParticles() {
-    const particleContainer = document.querySelector('.particle-effect');
-    if (!particleContainer) return;
-    
-    particleContainer.innerHTML = '';
-    
-    const particleColors = {
-        common: '#4b69ff',
-        uncommon: '#00d26a',
-        rare: '#ffd700',
-        epic: '#8847ff',
-        legendary: '#ff0000'
-    };
-    
-    const color = particleColors[currentItem.rarity] || '#4b69ff';
-    
-    for (let i = 0; i < 20; i++) {
-        const particle = document.createElement('div');
-        particle.className = 'particle';
-        
-        const size = 5 + Math.random() * 10;
-        const angle = (i / 20) * Math.PI * 2;
-        const distance = 50 + Math.random() * 100;
-        
-        particle.style.cssText = `
-            position: absolute;
-            width: ${size}px;
-            height: ${size}px;
-            background: ${color};
-            border-radius: 50%;
-            left: 50%;
-            top: 50%;
-            opacity: 0;
-            animation: particleExplode 1.5s ease-out ${i * 0.05}s forwards;
-            --end-x: ${Math.cos(angle) * distance}px;
-            --end-y: ${Math.sin(angle) * distance}px;
-            filter: drop-shadow(0 0 5px ${color});
-        `;
-        
-        particleContainer.appendChild(particle);
-    }
 }
 
 // Получение текста редкости
@@ -933,27 +658,15 @@ function hideLoading() {
 
 // Инициализация обработчиков событий
 function initEventListeners() {
-    console.log('Настройка обработчиков событий...');
-    
     if (elements.inventoryBtn) {
-        elements.inventoryBtn.addEventListener('click', openInventoryModal);
+        elements.inventoryBtn.addEventListener('click', () => {
+            renderInventory();
+            showModal(elements.inventoryModal);
+        });
     }
     
     if (elements.closeModal) {
-        elements.closeModal.addEventListener('click', () => {
-            if (isRouletteActive) {
-                if (confirm('Рулетка все еще активна. Вы уверены, что хотите отменить открытие?')) {
-                    isRouletteActive = false;
-                    hideModal(elements.caseModal);
-                    if (userData.balance >= currentCase?.price) {
-                        elements.openCaseBtn.disabled = false;
-                        elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${currentCase?.price || 0} 💎`;
-                    }
-                }
-            } else {
-                hideModal(elements.caseModal);
-            }
-        });
+        elements.closeModal.addEventListener('click', () => hideModal(elements.caseModal));
     }
     
     if (elements.closeInventory) {
@@ -968,80 +681,71 @@ function initEventListeners() {
         elements.openCaseBtn.addEventListener('click', openCase);
     }
     
-    // Сохраняем данные перед закрытием приложения
+    // Сохраняем данные при закрытии
     window.addEventListener('beforeunload', () => {
-        console.log('Сохранение данных перед закрытием...');
-        saveUserData();
+        if (isInitialized) {
+            console.log('Сохранение данных перед закрытием...');
+            saveUserDataToLocal();
+            
+            if (tg && userData.userId) {
+                // Пытаемся синхронизировать перед закрытием
+                const syncData = {
+                    action: 'sync_user_data',
+                    data: {
+                        balance: userData.balance,
+                        inventory: inventoryData,
+                        userId: userData.userId,
+                        username: userData.username
+                    },
+                    timestamp: Date.now()
+                };
+                
+                try {
+                    tg.sendData(JSON.stringify(syncData));
+                } catch (error) {
+                    console.error('Ошибка синхронизации при закрытии:', error);
+                }
+            }
+        }
     });
-    
-    // Сохраняем при закрытии мини  приложения
-    if (tg) {
-        tg.onEvent('viewportChanged', () => {
-            console.log('Сохранение данных при изменении вьюпорта...');
-            saveUserData();
-        });
-        
-        tg.onEvent('themeChanged', () => {
-            console.log('Сохранение данных при изменении темы...');
-            saveUserData();
-        });
-    }
 }
 
-// Обработка сообщений от Telegram бота
+// Обработка сообщений от Telegram
 if (tg) {
-    // Обработка данных от бота
     tg.onEvent('webAppDataReceived', (data) => {
         try {
             console.log('Получены данные от Telegram:', data);
             
             if (typeof data === 'string') {
                 const parsedData = JSON.parse(data);
-                handleTelegramData(parsedData);
-            } else if (typeof data === 'object') {
-                handleTelegramData(data);
+                
+                if (parsedData.success && parsedData.user) {
+                    // Обновляем баланс с сервера
+                    userData.balance = parsedData.user.balance || userData.balance;
+                    
+                    // Обновляем инвентарь если он есть
+                    if (parsedData.inventory && parsedData.inventory.length > 0) {
+                        inventoryData = parsedData.inventory;
+                    }
+                    
+                    // Сохраняем локально
+                    saveUserDataToLocal();
+                    
+                    // Обновляем UI
+                    updateUI();
+                    
+                    console.log('Данные обновлены с сервера');
+                }
             }
         } catch (error) {
             console.error('Error parsing web app data:', error);
         }
     });
     
-    // Обработчик для событий закрытия
     tg.onEvent('closing', () => {
         console.log('Мини-приложение закрывается, сохраняем данные...');
-        saveUserData();
+        saveUserDataToLocal();
     });
-}
-
-// Обработка данных от Telegram
-function handleTelegramData(parsedData) {
-    if (parsedData.success && parsedData.user) {
-        // Обновляем данные с сервера
-        userData.balance = parsedData.user.balance || 10000;
-        userData.inventory = parsedData.inventory || [];
-        inventoryData = parsedData.inventory || [];
-        casesData = parsedData.cases || [];
-        
-        updateUI();
-        console.log('Данные синхронизированы с сервером');
-        
-        // Сохраняем локально для кэша
-        const dataToSave = {
-            balance: userData.balance,
-            inventory: inventoryData,
-            userId: userData.userId,
-            timestamp: Date.now()
-        };
-        localStorage.setItem('minecraft_case_data', JSON.stringify(dataToSave));
-    }
-    
-    if (parsedData.success && parsedData.action === 'open_case') {
-        // Обновляем баланс после открытия кейса
-        if (parsedData.new_balance !== undefined) {
-            userData.balance = parsedData.new_balance;
-            updateUI();
-        }
-    }
 }
 
 // Инициализация при загрузке DOM

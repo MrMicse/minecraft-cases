@@ -111,19 +111,6 @@ def init_db():
     )
     ''')
     
-    # Таблица транзакций
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS transactions (
-        transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        type TEXT NOT NULL CHECK(type IN ('deposit', 'withdraw', 'purchase', 'reward', 'sync')),
-        amount INTEGER NOT NULL,
-        description TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(user_id)
-    )
-    ''')
-    
     conn.commit()
     
     # Добавляем начальные данные
@@ -139,47 +126,50 @@ def add_initial_data(cursor):
     """Добавление начальных данных в БД"""
     print("📦 Добавление начальных данных...")
     
-    # Minecraft предметы
+    # Предметы для кейсов
     minecraft_items = [
-        # Common - Еда
-        ("Яблоко", "🍎", "common", "food", 40, 20, "Восстанавливает 2 единицы голода", "apple.png"),
-        ("Хлеб", "🍞", "common", "food", 45, 22, "Восстанавливает 5 единиц голода", "bread.png"),
-        ("Мясо", "🍖", "common", "food", 50, 25, "Восстанавливает 8 единиц голода", "meat.png"),
-        ("Тыквенный пирог", "🥧", "common", "food", 60, 30, "Восстанавливает 8 единицы голода", "pie.png"),
-        ("Золотое яблоко", "🍏", "uncommon", "food", 400, 200, "Даёт регенерацию здоровья", "golden_apple.png"),
-        
-        # Common - Ресурсы
+        # Common
+        ("Железный Слиток", "⛓️", "common", "resources", 50, 25, "Базовый ресурс для крафта", "iron.png"),
         ("Уголь", "⚫", "common", "resources", 30, 15, "Топливо и краситель", "coal.png"),
-        ("Железный слиток", "⛓️", "common", "resources", 50, 25, "Базовый ресурс для крафта", "iron.png"),
-        ("Золотой слиток", "🟨", "common", "resources", 80, 40, "Редкий ресурс", "gold.png"),
-        ("Красная пыль", "🔴", "common", "resources", 40, 20, "Для механизмов и зелий", "redstone.png"),
+        ("Яблоко", "🍎", "common", "food", 40, 20, "Восстанавливает голод", "apple.png"),
+        ("Хлеб", "🍞", "common", "food", 45, 22, "Хорошая еда", "bread.png"),
+        ("Золотой Слиток", "🟨", "common", "resources", 80, 40, "Редкий ресурс", "gold.png"),
+        ("Дубовые Доски", "🪵", "common", "resources", 20, 10, "Строительный материал", "wood.png"),
+        ("Камень", "🪨", "common", "resources", 25, 12, "Прочный блок", "stone.png"),
+        ("Палка", "〰️", "common", "resources", 10, 5, "Для крафта инструментов", "stick.png"),
         
         # Uncommon
         ("Алмаз", "💎", "uncommon", "resources", 150, 75, "Ценный минерал", "diamond.png"),
         ("Изумруд", "🟩", "uncommon", "resources", 200, 100, "Торговая валюта", "emerald.png"),
-        ("Лазурит", "🔵", "uncommon", "resources", 100, 50, "Для зачарования", "lapis.png"),
-        
-        # Uncommon - Оружие
-        ("Железный меч", "⚔️", "uncommon", "weapons", 180, 90, "Базовое оружие", "iron_sword.png"),
-        ("Лук", "🏹", "uncommon", "weapons", 120, 60, "Дальнобойное оружие", "bow.png"),
-        ("Щит", "🛡️", "uncommon", "weapons", 150, 75, "Защита от атак", "shield.png"),
+        ("Железная Кираса", "🛡️", "uncommon", "armor", 180, 90, "Защита от урона", "iron_chestplate.png"),
+        ("Алмазный Меч", "⚔️", "uncommon", "weapon", 250, 125, "Мощное оружие", "diamond_sword.png"),
+        ("Лук", "🏹", "uncommon", "weapon", 120, 60, "Дальнобойное оружие", "bow.png"),
+        ("Алмазная Кирка", "⛏️", "uncommon", "tool", 220, 110, "Быстрая добыча", "diamond_pickaxe.png"),
+        ("Золотое Яблоко", "🍏", "uncommon", "food", 160, 80, "Мощное лечение", "golden_apple.png"),
+        ("Око Эндера", "👁️", "uncommon", "special", 300, 150, "Для поиска крепости", "ender_eye.png"),
         
         # Rare
-        ("Алмазный меч", "⚔️💎", "rare", "weapons", 250, 125, "Мощное оружие", "diamond_sword.png"),
-        ("Алмазная кирка", "⛏️💎", "rare", "tools", 300, 150, "Быстрая добыча", "diamond_pickaxe.png"),
-        ("Незеритовый слиток", "🔱", "rare", "resources", 500, 250, "Элитный материал", "netherite.png"),
-        ("Элитра", "🧥", "rare", "special", 800, 400, "Позволяет летать", "elytra.png"),
+        ("Незеритовый Слиток", "🔱", "rare", "resources", 500, 250, "Элитный материал", "netherite.png"),
+        ("Кирокрыло", "🪶", "rare", "special", 600, 300, "Мгновенное перемещение", "chorus_fruit.png"),
+        ("Элитра", "🧥", "rare", "armor", 800, 400, "Полеты в мире", "elytra.png"),
+        ("Зачарованная Книга", "📚", "rare", "special", 350, 175, "Мощные чары", "enchanted_book.png"),
+        ("Плащ Невидимости", "👻", "rare", "armor", 700, 350, "Стать невидимым", "invisibility_cloak.png"),
+        ("Бесконечный Лук", "🏹", "rare", "weapon", 450, 225, "Не требует стрел", "infinity_bow.png"),
         
         # Epic
-        ("Тотем бессмертия", "🐦", "epic", "special", 1000, 500, "Спасение от смерти", "totem.png"),
-        ("Сердце моря", "💙", "epic", "resources", 1200, 600, "Редкая реликвия", "heart.png"),
-        ("Голова дракона", "🐲", "epic", "special", 1500, 750, "Трофей дракона", "dragon_head.png"),
+        ("Тотем Бессмертия", "🐦", "epic", "special", 1000, 500, "Спасение от смерти", "totem.png"),
+        ("Сердце Моря", "💙", "epic", "resources", 1200, 600, "Редкая реликвия", "heart_of_the_sea.png"),
+        ("Голова Дракона", "🐲", "epic", "special", 1500, 750, "Трофей дракона", "dragon_head.png"),
+        ("Кристалл Энда", "💎", "epic", "resources", 900, 450, "Восстанавливает дракона", "end_crystal.png"),
+        ("Драконье Яйцо", "🥚", "epic", "special", 2000, 1000, "Уникальный трофей", "dragon_egg.png"),
+        ("Зачарованный Золотой Меч", "🗡️", "epic", "weapon", 1100, 550, "Легендарное оружие", "enchanted_golden_sword.png"),
         
         # Legendary
-        ("Командный блок", "🟪", "legendary", "special", 5000, 2500, "Божественный предмет", "command_block.png"),
-        ("Меч незера", "🗡️", "legendary", "weapons", 3000, 1500, "Легендарное оружие", "netherite_sword.png"),
-        ("Корона власти", "👑", "legendary", "special", 10000, 5000, "Знак абсолютной власти", "crown.png"),
-        ("Броня незера", "🛡️🔥", "legendary", "weapons", 4000, 2000, "Неуязвимая защита", "netherite_armor.png"),
+        ("Командный Блок", "🟪", "legendary", "special", 5000, 2500, "Божественный предмет", "command_block.png"),
+        ("Меч Незера", "🗡️", "legendary", "weapon", 3000, 1500, "Легендарное оружие", "netherite_sword.png"),
+        ("Корона Власти", "👑", "legendary", "special", 10000, 5000, "Знак абсолютной власти", "crown.png"),
+        ("Артефакт Создателя", "⭐", "legendary", "special", 7500, 3750, "Сила творения", "creator_artifact.png"),
+        ("Сфера Бессмертия", "🔮", "legendary", "special", 6000, 3000, "Вечная жизнь", "immortality_sphere.png"),
     ]
     
     cursor.executemany(
@@ -190,17 +180,17 @@ def add_initial_data(cursor):
     
     # Кейсы
     cases = [
-        ("Кейс с Едой", 100, "🍎", "Содержит разнообразную еду и напитки", 
-         '{"common": 70, "uncommon": 30}', "case_food.png"),
-        ("Ресурсный Кейс", 250, "⛏️", "Руды, минералы и базовые ресурсы", 
-         '{"common": 50, "uncommon": 40, "rare": 10}', "case_resources.png"),
-        ("Оружейный Кейс", 500, "⚔️", "Оружие, броня и инструменты", 
-         '{"uncommon": 40, "rare": 50, "epic": 10}', "case_weapons.png"),
-        ("Легендарный Кейс", 1000, "🌟", "Уникальные и легендарные предметы", 
-         '{"rare": 30, "epic": 50, "legendary": 20}', "case_legendary.png"),
-        ("Донат Кейс", 5000, "👑", "Эксклюзивные донат предметы", 
-         '{"epic": 40, "legendary": 60}', "case_donate.png"),
-        ("Случайный Кейс", 750, "🧰", "Микс из всех категорий", 
+        ("🍎 Кейс с Едой", 100, "🍎", "Содержит разнообразную еду и напитки", 
+         '{"common": 60, "uncommon": 40}', "case_food.png"),
+        ("⛏️ Ресурсный Кейс", 250, "⛏️", "Руды, минералы и базовые ресурсы", 
+         '{"common": 40, "uncommon": 50, "rare": 10}', "case_resources.png"),
+        ("⚔️ Оружейный Кейс", 500, "⚔️", "Оружие, броня и инструменты", 
+         '{"uncommon": 30, "rare": 50, "epic": 20}', "case_weapons.png"),
+        ("🌟 Легендарный Кейс", 1000, "🌟", "Уникальные и легендарные предметы", 
+         '{"rare": 20, "epic": 50, "legendary": 30}', "case_legendary.png"),
+        ("👑 Доступный Кейс", 5000, "👑", "Эксклюзивные донат предметы", 
+         '{"epic": 30, "legendary": 70}', "case_donate.png"),
+        ("🧰 Случайный Кейс", 750, "🧰", "Микс из всех категорий", 
          '{"common": 30, "uncommon": 40, "rare": 20, "epic": 10}', "case_random.png"),
     ]
     
@@ -212,7 +202,7 @@ def add_initial_data(cursor):
     
     print(f"✅ Добавлено {len(minecraft_items)} предметов и {len(cases)} кейсов")
 
-def get_user(user_id: int) -> Dict:
+def get_or_create_user(user_id: int, username: str = None, first_name: str = None, last_name: str = None) -> Dict:
     """Получение или создание пользователя"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -224,28 +214,31 @@ def get_user(user_id: int) -> Dict:
     )
     
     user_data = cursor.fetchone()
+    
     if not user_data:
+        # Создаем нового пользователя
         cursor.execute(
-            """INSERT INTO users (user_id, balance, experience, level, last_login) 
-               VALUES (?, 10000, 0, 1, CURRENT_TIMESTAMP)""",
-            (user_id,)
+            """INSERT INTO users (user_id, username, first_name, last_name, balance, experience, level, last_login) 
+               VALUES (?, ?, ?, ?, 10000, 0, 1, CURRENT_TIMESTAMP)""",
+            (user_id, username, first_name, last_name)
         )
         conn.commit()
+        print(f"✅ Создан новый пользователь: {user_id}")
         
-        # Создаем начальную транзакцию
-        cursor.execute(
-            """INSERT INTO transactions (user_id, type, amount, description) 
-               VALUES (?, 'reward', 10000, 'Стартовый бонус')""",
-            (user_id,)
-        )
-        conn.commit()
-        
+        # Получаем созданного пользователя
         cursor.execute(
             """SELECT user_id, username, first_name, last_name, balance, experience, level 
                FROM users WHERE user_id = ?""",
             (user_id,)
         )
         user_data = cursor.fetchone()
+    else:
+        # Обновляем время последнего входа
+        cursor.execute(
+            "UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE user_id = ?",
+            (user_id,)
+        )
+        conn.commit()
     
     conn.close()
     
@@ -259,63 +252,159 @@ def get_user(user_id: int) -> Dict:
         "level": user_data[6]
     }
 
-def update_balance(user_id: int, amount: int, transaction_type: str, description: str = "") -> int:
+def update_user_balance(user_id: int, new_balance: int) -> bool:
     """Обновление баланса пользователя"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    cursor.execute(
-        "UPDATE users SET balance = balance + ? WHERE user_id = ?",
-        (amount, user_id)
-    )
-    
-    cursor.execute(
-        """INSERT INTO transactions (user_id, type, amount, description) 
-           VALUES (?, ?, ?, ?)""",
-        (user_id, transaction_type, amount, description)
-    )
-    
-    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-    new_balance = cursor.fetchone()[0]
-    
-    conn.commit()
-    conn.close()
-    
-    return new_balance
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            "UPDATE users SET balance = ? WHERE user_id = ?",
+            (new_balance, user_id)
+        )
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"💰 Баланс пользователя {user_id} обновлен: {new_balance}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Ошибка обновления баланса: {e}")
+        return False
 
-def get_inventory(user_id: int) -> List[Dict]:
+def get_user_inventory(user_id: int) -> List[Dict]:
     """Получение инвентаря пользователя"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
     cursor.execute('''
-    SELECT i.item_id, i.name, i.icon, i.rarity, i.category, i.price, i.sell_price, 
-           i.description, i.texture_url, inv.quantity, inv.obtained_at, inv.is_favorite
+    SELECT i.name, i.icon, i.rarity, i.price, i.description, 
+           inv.obtained_at
     FROM inventory inv
     JOIN items i ON inv.item_id = i.item_id
     WHERE inv.user_id = ?
-    ORDER BY inv.is_favorite DESC, inv.obtained_at DESC
+    ORDER BY inv.obtained_at DESC
     ''', (user_id,))
     
     inventory = []
     for row in cursor.fetchall():
         inventory.append({
-            "id": row[0],
-            "name": row[1],
-            "icon": row[2],
-            "rarity": row[3],
-            "category": row[4],
-            "price": row[5],
-            "sell_price": row[6],
-            "description": row[7],
-            "texture_url": row[8],
-            "quantity": row[9],
-            "obtained_at": row[10],
-            "is_favorite": bool(row[11])
+            "name": row[0],
+            "icon": row[1],
+            "rarity": row[2],
+            "price": row[3],
+            "description": row[4],
+            "obtained_at": row[5]
         })
     
     conn.close()
     return inventory
+
+def add_item_to_inventory(user_id: int, item_data: Dict) -> bool:
+    """Добавление предмета в инвентарь"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Находим ID предмета
+        cursor.execute(
+            "SELECT item_id FROM items WHERE name = ? AND rarity = ?",
+            (item_data['name'], item_data['rarity'])
+        )
+        
+        item_row = cursor.fetchone()
+        
+        if item_row:
+            item_id = item_row[0]
+        else:
+            # Если предмет не найден, создаем его
+            cursor.execute(
+                """INSERT INTO items (name, icon, rarity, category, price, sell_price, description, texture_url) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    item_data['name'],
+                    item_data.get('icon', '❓'),
+                    item_data['rarity'],
+                    'special',
+                    item_data.get('price', 100),
+                    item_data.get('price', 100) // 2,
+                    item_data.get('description', 'Предмет из кейса'),
+                    'custom_item.png'
+                )
+            )
+            item_id = cursor.lastrowid
+        
+        # Добавляем в инвентарь
+        cursor.execute(
+            "INSERT INTO inventory (user_id, item_id, obtained_at) VALUES (?, ?, ?)",
+            (user_id, item_id, item_data.get('obtained_at', datetime.now().isoformat()))
+        )
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"🎁 Предмет добавлен в инвентарь пользователя {user_id}: {item_data['name']}")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Ошибка добавления предмета в инвентарь: {e}")
+        return False
+
+def sync_user_inventory(user_id: int, inventory_data: List[Dict]) -> bool:
+    """Синхронизация инвентаря пользователя"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Удаляем старый инвентарь
+        cursor.execute("DELETE FROM inventory WHERE user_id = ?", (user_id,))
+        
+        # Добавляем новые предметы
+        for item in inventory_data:
+            # Находим или создаем предмет
+            cursor.execute(
+                "SELECT item_id FROM items WHERE name = ? AND rarity = ?",
+                (item['name'], item['rarity'])
+            )
+            
+            item_row = cursor.fetchone()
+            
+            if item_row:
+                item_id = item_row[0]
+            else:
+                # Создаем новый предмет
+                cursor.execute(
+                    """INSERT INTO items (name, icon, rarity, category, price, sell_price, description, texture_url) 
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        item['name'],
+                        item.get('icon', '❓'),
+                        item['rarity'],
+                        'special',
+                        item.get('price', 100),
+                        item.get('price', 100) // 2,
+                        item.get('description', 'Предмет из кейса'),
+                        'custom_item.png'
+                    )
+                )
+                item_id = cursor.lastrowid
+            
+            # Добавляем в инвентарь
+            cursor.execute(
+                "INSERT INTO inventory (user_id, item_id, obtained_at) VALUES (?, ?, ?)",
+                (user_id, item_id, item.get('obtained_at', datetime.now().isoformat()))
+            )
+        
+        conn.commit()
+        conn.close()
+        
+        print(f"🔄 Инвентарь пользователя {user_id} синхронизирован: {len(inventory_data)} предметов")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Ошибка синхронизации инвентаря: {e}")
+        return False
 
 def get_cases() -> List[Dict]:
     """Получение списка кейсов"""
@@ -341,212 +430,107 @@ def get_cases() -> List[Dict]:
     conn.close()
     return cases
 
-def open_case(user_id: int, case_id: int) -> Dict:
-    """Открытие кейса"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    # Получаем информацию о кейсе
-    cursor.execute(
-        "SELECT price, rarity_weights FROM cases WHERE case_id = ?",
-        (case_id,)
-    )
-    case_data = cursor.fetchone()
-    
-    if not case_data:
-        conn.close()
-        return {"error": "Кейс не найден"}
-    
-    case_price, rarity_weights_json = case_data
-    rarity_weights = json.loads(rarity_weights_json)
-    
-    # Получаем предметы по редкости
-    total_weight = sum(rarity_weights.values())
-    random_value = random.uniform(0, total_weight)
-    
-    selected_rarity = None
-    cumulative_weight = 0
-    for rarity, weight in rarity_weights.items():
-        cumulative_weight += weight
-        if random_value <= cumulative_weight:
-            selected_rarity = rarity
-            break
-    
-    # Получаем случайный предмет выбранной редкости
-    cursor.execute(
-        """SELECT item_id, name, icon, rarity, price, description, texture_url 
-           FROM items WHERE rarity = ? ORDER BY RANDOM() LIMIT 1""",
-        (selected_rarity,)
-    )
-    
-    item_data = cursor.fetchone()
-    if not item_data:
-        conn.close()
-        return {"error": "Не удалось выбрать предмет"}
-    
-    item = {
-        "item_id": item_data[0],
-        "name": item_data[1],
-        "icon": item_data[2],
-        "rarity": item_data[3],
-        "price": item_data[4],
-        "description": item_data[5],
-        "texture_url": item_data[6]
-    }
-    
-    # Проверяем баланс
-    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-    balance = cursor.fetchone()[0]
-    
-    if balance < case_price:
-        conn.close()
-        return {"error": "Недостаточно средств"}
-    
-    # Списание средств
-    new_balance = update_balance(
-        user_id, -case_price, "purchase", 
-        f"Покупка кейса: {case_id}"
-    )
-    
-    # Добавляем предмет в инвентарь
-    cursor.execute(
-        """INSERT INTO inventory (user_id, item_id) 
-           VALUES (?, ?)""",
-        (user_id, item["item_id"])
-    )
-    
-    # Добавляем в историю открытий
-    cursor.execute(
-        """INSERT INTO opening_history (user_id, case_id, item_id) 
-           VALUES (?, ?, ?)""",
-        (user_id, case_id, item["item_id"])
-    )
-    
-    # Начисляем опыт
-    experience_gained = case_price // 10
-    cursor.execute(
-        "UPDATE users SET experience = experience + ? WHERE user_id = ?",
-        (experience_gained, user_id)
-    )
-    
-    conn.commit()
-    conn.close()
-    
-    return {
-        "success": True,
-        "item": item,
-        "new_balance": new_balance,
-        "experience_gained": experience_gained,
-        "case_price": case_price
-    }
-
-def sync_user_data(user_id: int, client_data: Dict) -> Dict:
-    """Синхронизация данных пользователя с клиента"""
-    print(f"🔄 Синхронизация данных для пользователя {user_id}")
-    
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
+def open_case_on_server(user_id: int, case_id: int) -> Dict:
+    """Открытие кейса на сервере"""
     try:
-        client_balance = client_data.get('balance', 10000)
-        client_inventory = client_data.get('inventory', [])
-        client_user_id = client_data.get('userId', user_id)
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
         
-        # Получаем текущий баланс с сервера
+        # Получаем информацию о кейсе
+        cursor.execute(
+            "SELECT price, rarity_weights FROM cases WHERE case_id = ?",
+            (case_id,)
+        )
+        case_data = cursor.fetchone()
+        
+        if not case_data:
+            conn.close()
+            return {"success": False, "error": "Кейс не найден"}
+        
+        case_price, rarity_weights_json = case_data
+        rarity_weights = json.loads(rarity_weights_json)
+        
+        # Проверяем баланс пользователя
         cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-        server_data = cursor.fetchone()
+        user_balance = cursor.fetchone()[0]
         
-        if not server_data:
-            # Создаем пользователя если не существует
-            get_user(user_id)
-            cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-            server_data = cursor.fetchone()
+        if user_balance < case_price:
+            conn.close()
+            return {"success": False, "error": "Недостаточно средств"}
         
-        server_balance = server_data[0]
+        # Генерируем предмет
+        total_weight = sum(rarity_weights.values())
+        random_value = random.uniform(0, total_weight)
         
-        print(f"Клиентский баланс: {client_balance}, Серверный баланс: {server_balance}")
+        selected_rarity = 'common'
+        cumulative_weight = 0
+        for rarity, weight in rarity_weights.items():
+            cumulative_weight += weight
+            if random_value <= cumulative_weight:
+                selected_rarity = rarity
+                break
         
-        # Обновляем баланс из клиента
-        if server_balance != client_balance:
-            print(f"Балансы различаются, обновляем с клиентского: {client_balance}")
-            
+        # Получаем случайный предмет выбранной редкости
+        cursor.execute(
+            """SELECT name, icon, rarity, price, description, texture_url 
+               FROM items WHERE rarity = ? ORDER BY RANDOM() LIMIT 1""",
+            (selected_rarity,)
+        )
+        
+        item_data = cursor.fetchone()
+        if not item_data:
+            conn.close()
+            return {"success": False, "error": "Не удалось выбрать предмет"}
+        
+        item = {
+            "name": item_data[0],
+            "icon": item_data[1],
+            "rarity": item_data[2],
+            "price": item_data[3],
+            "description": item_data[4],
+            "texture_url": item_data[5]
+        }
+        
+        # Обновляем баланс
+        new_balance = user_balance - case_price
+        cursor.execute(
+            "UPDATE users SET balance = ? WHERE user_id = ?",
+            (new_balance, user_id)
+        )
+        
+        # Добавляем предмет в инвентарь
+        cursor.execute(
+            "SELECT item_id FROM items WHERE name = ? AND rarity = ?",
+            (item['name'], item['rarity'])
+        )
+        item_id_row = cursor.fetchone()
+        
+        if item_id_row:
+            item_id = item_id_row[0]
             cursor.execute(
-                "UPDATE users SET balance = ? WHERE user_id = ?",
-                (client_balance, user_id)
+                "INSERT INTO inventory (user_id, item_id) VALUES (?, ?)",
+                (user_id, item_id)
             )
-            
-            # Записываем транзакцию синхронизации
-            difference = client_balance - server_balance
-            if difference != 0:
-                cursor.execute(
-                    """INSERT INTO transactions (user_id, type, amount, description) 
-                       VALUES (?, 'sync', ?, 'Синхронизация с клиентом')""",
-                    (user_id, difference)
-                )
-            
-            server_balance = client_balance
         
-        # Синхронизируем инвентарь
-        # Сначала очищаем существующий инвентарь
-        cursor.execute("DELETE FROM inventory WHERE user_id = ?", (user_id,))
-        
-        # Добавляем предметы из клиента
-        for client_item in client_inventory:
-            # Находим ID предмета по имени и редкости
-            cursor.execute(
-                "SELECT item_id FROM items WHERE name = ? AND rarity = ?",
-                (client_item.get('name'), client_item.get('rarity'))
-            )
-            item_data = cursor.fetchone()
-            
-            if item_data:
-                item_id = item_data[0]
-                # Добавляем предмет в инвентарь
-                cursor.execute(
-                    "INSERT INTO inventory (user_id, item_id, obtained_at) VALUES (?, ?, ?)",
-                    (user_id, item_id, client_item.get('obtained_at', datetime.now().isoformat()))
-                )
-            else:
-                # Если предмет не найден, создаем его
-                print(f"Предмет не найден, создаем: {client_item.get('name')}")
-                cursor.execute(
-                    """INSERT INTO items (name, icon, rarity, category, price, sell_price, description, texture_url) 
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        client_item.get('name'),
-                        client_item.get('icon', '❓'),
-                        client_item.get('rarity', 'common'),
-                        'special',
-                        client_item.get('price', 100),
-                        client_item.get('price', 100) // 2,
-                        client_item.get('description', 'Синхронизированный предмет'),
-                        'synced_item.png'
-                    )
-                )
-                new_item_id = cursor.lastrowid
-                cursor.execute(
-                    "INSERT INTO inventory (user_id, item_id) VALUES (?, ?)",
-                    (user_id, new_item_id)
-                )
+        # Добавляем в историю
+        cursor.execute(
+            "INSERT INTO opening_history (user_id, case_id, item_id) VALUES (?, ?, ?)",
+            (user_id, case_id, item_id if 'item_id' in locals() else 1)
+        )
         
         conn.commit()
         conn.close()
         
         return {
             "success": True,
-            "message": "Данные синхронизированы",
-            "balance": server_balance,
-            "inventory_count": len(client_inventory)
+            "item": item,
+            "new_balance": new_balance,
+            "case_price": case_price
         }
         
     except Exception as e:
-        conn.rollback()
-        conn.close()
-        print(f"❌ Ошибка синхронизации: {e}")
-        return {
-            "success": False,
-            "error": str(e)
-        }
+        print(f"❌ Ошибка открытия кейса: {e}")
+        return {"success": False, "error": str(e)}
 
 # Обработчики команд
 @router.message(Command("start"))
@@ -554,17 +538,12 @@ async def cmd_start(message: Message):
     """Команда /start"""
     print(f"📥 Получена команда /start от пользователя {message.from_user.id}")
     
-    user = get_user(message.from_user.id)
-    
-    # Обновляем время последнего входа
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE user_id = ?",
-        (user["user_id"],)
+    user = get_or_create_user(
+        message.from_user.id,
+        message.from_user.username,
+        message.from_user.first_name,
+        message.from_user.last_name
     )
-    conn.commit()
-    conn.close()
     
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -599,59 +578,13 @@ async def cmd_start(message: Message):
     
     await message.answer(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
 
-@router.message(Command("daily"))
-async def cmd_daily(message: Message):
-    """Ежедневный бонус"""
-    print(f"📥 Получена команда /daily от пользователя {message.from_user.id}")
-    
-    user_id = message.from_user.id
-    user = get_user(user_id)
-    
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    # Проверяем, получал ли пользователь бонус сегодня
-    cursor.execute(
-        """SELECT created_at FROM transactions 
-           WHERE user_id = ? AND type = 'reward' AND description = 'Ежедневный бонус'
-           ORDER BY created_at DESC LIMIT 1""",
-        (user_id,)
-    )
-    
-    last_daily = cursor.fetchone()
-    
-    if last_daily:
-        last_date = datetime.strptime(last_daily[0], '%Y-%m-%d %H:%M:%S')
-        if last_date.date() == datetime.now().date():
-            await message.answer("🎁 Вы уже получали ежедневный бонус сегодня!")
-            conn.close()
-            return
-    
-    # Начисляем бонус
-    daily_amount = 100
-    new_balance = update_balance(
-        user_id, daily_amount, "reward", "Ежедневный бонус"
-    )
-    
-    text = f"""
-🎁 <b>Ежедневный бонус получен!</b>
-
-💰 +{daily_amount} 💎 добавлено на баланс
-📈 <b>Новый баланс:</b> {new_balance} 💎
-
-🕐 Следующий бонус через 24 часа!
-    """
-    
-    await message.answer(text, parse_mode=ParseMode.HTML)
-    conn.close()
-
 @router.message(Command("balance"))
 async def cmd_balance(message: Message):
     """Проверка баланса"""
     print(f"📥 Получена команда /balance от пользователя {message.from_user.id}")
     
-    user = get_user(message.from_user.id)
-    inventory = get_inventory(user["user_id"])
+    user = get_or_create_user(message.from_user.id)
+    inventory = get_user_inventory(message.from_user.id)
     
     text = f"""
 💰 <b>Статистика аккаунта</b>
@@ -674,14 +607,19 @@ async def handle_web_app_data(message: Message):
         data = json.loads(message.web_app_data.data)
         user_id = message.from_user.id
         
-        print(f"Действие: {data.get('action')}")
-        
         action = data.get('action')
+        print(f"Действие: {action}")
         
         if action == 'get_user_data':
-            # Запрос данных пользователя
-            user = get_user(user_id)
-            inventory = get_inventory(user_id)
+            # Получаем данные пользователя
+            user = get_or_create_user(
+                user_id,
+                message.from_user.username,
+                message.from_user.first_name,
+                message.from_user.last_name
+            )
+            
+            inventory = get_user_inventory(user_id)
             cases = get_cases()
             
             response = {
@@ -694,8 +632,6 @@ async def handle_web_app_data(message: Message):
                 'inventory': inventory,
                 'cases': cases,
                 'config': {
-                    'min_bet': 10,
-                    'max_bet': 10000,
                     'daily_bonus': 100,
                     'version': '1.0.0'
                 }
@@ -704,18 +640,39 @@ async def handle_web_app_data(message: Message):
             await message.answer(json.dumps(response))
             print(f"📤 Отправлены данные пользователю {user_id}")
             
-        elif action == 'update_user_data':
-            # Обновление данных пользователя (синхронизация)
+        elif action == 'sync_user_data':
+            # Синхронизация данных пользователя
             client_data = data.get('data', {})
+            client_balance = client_data.get('balance', 10000)
+            client_inventory = client_data.get('inventory', [])
             
             print(f"🔄 Синхронизация данных для пользователя {user_id}")
+            print(f"Баланс клиента: {client_balance}")
+            print(f"Количество предметов: {len(client_inventory)}")
             
-            result = sync_user_data(user_id, client_data)
+            # Обновляем баланс
+            update_success = update_user_balance(user_id, client_balance)
+            
+            # Синхронизируем инвентарь
+            inventory_success = False
+            if client_inventory:
+                inventory_success = sync_user_inventory(user_id, client_inventory)
+            
+            # Получаем обновленные данные для ответа
+            user = get_or_create_user(user_id)
+            updated_inventory = get_user_inventory(user_id) if inventory_success else []
             
             response = {
-                'success': result['success'],
-                'message': result.get('message', 'Данные синхронизированы'),
-                'balance': result.get('balance', 10000)
+                'success': True,
+                'message': 'Данные успешно синхронизированы',
+                'user': {
+                    'balance': user['balance'],
+                    'experience': user['experience'],
+                    'level': user['level']
+                },
+                'inventory': updated_inventory,
+                'balance_updated': update_success,
+                'inventory_updated': inventory_success
             }
             
             await message.answer(json.dumps(response))
@@ -726,16 +683,23 @@ async def handle_web_app_data(message: Message):
             case_id = data.get('case_id')
             print(f"🎰 Пользователь {user_id} открывает кейс {case_id}")
             
-            result = open_case(user_id, case_id)
+            result = open_case_on_server(user_id, case_id)
             
-            if 'error' in result:
-                print(f"❌ Ошибка при открытии кейса: {result['error']}")
-                await message.answer(json.dumps({'error': result['error']}))
-                return
-            
-            # Отправляем уведомление для редких предметов
-            if result['item']['rarity'] in ['epic', 'legendary']:
-                notification = f"""
+            if result['success']:
+                # Получаем обновленные данные
+                user = get_or_create_user(user_id)
+                inventory = get_user_inventory(user_id)
+                
+                result['user'] = {
+                    'balance': user['balance'],
+                    'experience': user['experience'],
+                    'level': user['level']
+                }
+                result['inventory'] = inventory
+                
+                # Уведомление для редких предметов
+                if result['item']['rarity'] in ['epic', 'legendary']:
+                    notification = f"""
 🎉 <b>УДАЧА В КЕЙСАХ!</b>
 
 {message.from_user.first_name} получил предмет <b>{result['item']['rarity']}</b> редкости:
@@ -744,8 +708,8 @@ async def handle_web_app_data(message: Message):
 💰 <b>Стоимость:</b> {result['item']['price']} 💎
 
 Поздравляем! 🎊
-                """
-                await message.answer(notification, parse_mode=ParseMode.HTML)
+                    """
+                    await message.answer(notification, parse_mode=ParseMode.HTML)
             
             await message.answer(json.dumps(result))
             print(f"📤 Отправлен результат открытия кейса пользователю {user_id}")
