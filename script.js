@@ -4,7 +4,7 @@
 // You can update it here OR pass ?api=https://NEW.trycloudflare.com in the WebApp URL.
 const API_BASE = (new URLSearchParams(location.search).get('api')
     || localStorage.getItem('API_BASE')
-    || 'https://manhattan-sticky-named-literary.trycloudflare.com ').replace(/\/+$/, '');
+    || 'https://shelf-consultancy-reasons-strong.trycloudflare.com').replace(/\/+$/, '');
 
 // Demo mode is allowed only when explicitly enabled (?demo=1) or when Telegram WebApp is unavailable.
 const DEMO_MODE = new URLSearchParams(location.search).get('demo') === '1';
