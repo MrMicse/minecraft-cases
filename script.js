@@ -1,3 +1,24 @@
+// Cloudflare Tunnel API endpoint
+const API_BASE = 'https://retain-oval-troy-close.trycloudflare.com';
+
+
+// ====== LocalStorage cache busting (forces reset for all users after update) ======
+const APP_STORAGE_KEY = 'minecraftCaseData';
+const APP_STORAGE_VERSION = 2; // increment to reset cached client-side data
+
+function ensureStorageVersion() {
+    try {
+        const raw = localStorage.getItem(APP_STORAGE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        if (!parsed || parsed.__v !== APP_STORAGE_VERSION) {
+            localStorage.removeItem(APP_STORAGE_KEY);
+        }
+    } catch (e) {
+        localStorage.removeItem(APP_STORAGE_KEY);
+    }
+}
+
 // Инициализация Telegram Web App
 const tg = window.Telegram?.WebApp;
 if (tg) {
@@ -138,8 +159,11 @@ function easeOutCubic(t) {
 async function initApp() {
     console.log('Инициализация приложения...');
     showLoading();
-    
+
     try {
+        // Force-reset stale cached data for all users after update
+        ensureStorageVersion();
+
         // Сначала пытаемся загрузить из localStorage для быстрого отображения
         loadFromLocalStorage();
         
@@ -149,7 +173,10 @@ async function initApp() {
         // Обновляем UI
         updateUI();
         
-    } catch (error) {
+    
+        // Запускаем обновление баланса в "реальном времени"
+        startBalancePolling();
+} catch (error) {
         console.error('Ошибка инициализации:', error);
         alert('Ошибка загрузки данных. Пожалуйста, обновите страницу.');
     }
@@ -163,15 +190,14 @@ async function initApp() {
 
 // Загрузка из localStorage
 function loadFromLocalStorage() {
-    const savedData = localStorage.getItem('minecraftCaseData');
+    // IMPORTANT: balance is authoritative on the server (bot DB).
+    // We only keep inventory in localStorage as a UI cache.
+    const savedData = localStorage.getItem(APP_STORAGE_KEY);
     if (savedData) {
         try {
             const parsed = JSON.parse(savedData);
-            userData.balance = parsed.balance || 0;
-            userData.experience = parsed.experience || 0;
-            userData.level = parsed.level || 1;
             inventoryData = parsed.inventory || [];
-            console.log('Данные загружены из localStorage');
+            console.log('Инвентарь загружен из localStorage (кэш)');
         } catch (e) {
             console.error('Ошибка загрузки из localStorage:', e);
         }
@@ -180,13 +206,15 @@ function loadFromLocalStorage() {
 
 // Сохранение в localStorage
 function saveToLocalStorage() {
+    // We store a small cache for faster UI, but server remains the source of truth.
     const data = {
+        __v: APP_STORAGE_VERSION,
         balance: userData.balance,
         experience: userData.experience,
         level: userData.level,
         inventory: inventoryData
     };
-    localStorage.setItem('minecraftCaseData', JSON.stringify(data));
+    localStorage.setItem(APP_STORAGE_KEY, JSON.stringify(data));
 }
 
 // Синхронизация с сервером через Telegram Web App
@@ -226,6 +254,36 @@ async function syncWithServer() {
         loadDemoData();
         return null;
     }
+}
+
+
+
+// ===== Реалтайм обновление баланса (polling) =====
+let _balancePollTimer = null;
+
+function startBalancePolling() {
+    if (_balancePollTimer) return;
+
+    // Обновляем баланс раз в 2 секунды
+    _balancePollTimer = setInterval(async () => {
+        try {
+            const resp = await sendDataToBot('get_balance', {});
+            if (resp && resp.success && typeof resp.balance === 'number') {
+                // Обновляем только баланс/уровень/опыт
+                userData.balance = resp.balance;
+                if (typeof resp.experience === 'number') userData.experience = resp.experience;
+                if (typeof resp.level === 'number') userData.level = resp.level;
+
+                // Сохраняем и обновляем UI
+                saveToLocalStorage();
+                if (elements.balance) {
+                    elements.balance.textContent = userData.balance.toLocaleString();
+                }
+            }
+        } catch (e) {
+            // молча
+        }
+    }, 2000);
 }
 
 // Загрузка демо-данных
@@ -293,83 +351,51 @@ function loadDemoData() {
 
 // Отправка данных боту через Web App - УПРОЩЕННАЯ ВЕРСИЯ
 async function sendDataToBot(action, data) {
-    return new Promise((resolve) => {
-        if (!tg) {
-            console.log('Telegram Web App не доступен, используем демо-режим');
-            resolve(handleDemoMode(action, data));
-            return;
-        }
-        
-        console.log(`Отправка данных боту: ${action}`, data);
-        
-        // Подготавливаем данные для отправки
-        const requestData = JSON.stringify({
-            action: action,
-            ...data,
-            timestamp: Date.now()
+    // Если Telegram Web App недоступен — работаем в демо-режиме
+    if (!tg) {
+        console.log('Telegram Web App не доступен, используем демо-режим');
+        return handleDemoMode(action, data);
+    }
+
+    // ВНИМАНИЕ: tg.sendData не предназначен для получения ответа от бота в WebApp.
+    // Поэтому используем HTTP API (через Cloudflare Tunnel).
+    const payload = {
+        action: action,
+        ...data,
+        timestamp: Date.now()
+    };
+
+    try {
+        const response = await fetch(`${API_BASE}/api/webapp`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                // initData используется сервером для проверки подписи Telegram
+                'X-Telegram-Init-Data': tg.initData || ''
+            },
+            body: JSON.stringify(payload)
         });
-        
-        console.log('Отправляемые данные:', requestData);
-        
-        // Глобальная переменная для хранения обработчика
-        window._botResponseHandler = null;
-        
-        // Создаем обработчик для получения ответа от бота
-        window._botResponseHandler = async (event) => {
-            // Этот обработчик будет вызываться когда бот ответит
-            if (event.data && event.data.type === 'message') {
-                try {
-                    const message = event.data;
-                    console.log('Получено сообщение от бота:', message);
-                    
-                    if (message.text) {
-                        try {
-                            const parsedData = JSON.parse(message.text);
-                            console.log('Парсинг ответа от бота:', parsedData);
-                            
-                            // Удаляем обработчик после получения ответа
-                            if (window._botResponseHandler) {
-                                window.removeEventListener('message', window._botResponseHandler);
-                                window._botResponseHandler = null;
-                            }
-                            resolve(parsedData);
-                        } catch (e) {
-                            console.error('Ошибка парсинга JSON:', e);
-                            if (window._botResponseHandler) {
-                                window.removeEventListener('message', window._botResponseHandler);
-                                window._botResponseHandler = null;
-                            }
-                            resolve(handleDemoMode(action, data));
-                        }
-                    }
-                } catch (e) {
-                    console.error('Ошибка обработки сообщения:', e);
-                    if (window._botResponseHandler) {
-                        window.removeEventListener('message', window._botResponseHandler);
-                        window._botResponseHandler = null;
-                    }
-                    resolve(handleDemoMode(action, data));
-                }
-            }
-        };
-        
-        // Добавляем обработчик сообщений
-        window.addEventListener('message', window._botResponseHandler);
-        
-        // Отправляем данные через Telegram Web App
-        tg.sendData(requestData);
-        
-        // Таймаут на случай если ответ не придет
-        setTimeout(() => {
-            console.warn('Таймаут запроса, используем демо-режим');
-            if (window._botResponseHandler) {
-                window.removeEventListener('message', window._botResponseHandler);
-                window._botResponseHandler = null;
-            }
-            resolve(handleDemoMode(action, data));
-        }, 3000); // Уменьшаем таймаут до 3 секунд
-    });
+
+        if (!response.ok) {
+            const text = await response.text().catch(() => '');
+            console.error('HTTP API error:', response.status, text);
+            // Если сервер недоступен — уходим в демо, чтобы приложение не "умерло"
+            return handleDemoMode(action, data);
+        }
+
+        const json = await response.json().catch(() => null);
+        if (!json) {
+            console.error('Не удалось распарсить ответ сервера');
+            return handleDemoMode(action, data);
+        }
+
+        return json;
+    } catch (error) {
+        console.error('Ошибка запроса к API:', error);
+        return handleDemoMode(action, data);
+    }
 }
+
 
 // Обработка действий в демо-режиме
 function handleDemoMode(action, data) {

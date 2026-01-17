@@ -7,6 +7,10 @@ from typing import Dict, List
 import random
 from dotenv import load_dotenv
 
+from aiohttp import web
+import hmac
+import hashlib
+
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import (
     Message, InlineKeyboardMarkup, 
@@ -25,6 +29,12 @@ ADMIN_ID = int(os.getenv('ADMIN_ID', 0))
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 DB_PATH = os.getenv('DATABASE_URL', 'sqlite:///minecraft_cases.db').replace('sqlite:///', '')
 
+# HTTP API (для мини-приложения на GitHub Pages через Cloudflare Tunnel)
+API_HOST = os.getenv('API_HOST', '0.0.0.0')
+API_PORT = int(os.getenv('API_PORT', '8080'))
+WEBAPP_ALLOWED_ORIGINS = os.getenv('WEBAPP_ALLOWED_ORIGINS', '*')  # например: https://mrmicse.github.io
+
+
 # Проверка наличия обязательных переменных
 if not BOT_TOKEN:
     raise ValueError("❌ BOT_TOKEN не найден в .env файле!")
@@ -33,6 +43,75 @@ bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 router = Router()
 dp.include_router(router)
+
+
+# ==================== Telegram WebApp auth ====================
+def verify_telegram_webapp_init_data(init_data: str) -> Dict:
+    """
+    Проверяет подпись initData от Telegram WebApp и возвращает user dict.
+    init_data приходит из window.Telegram.WebApp.initData
+    """
+    if not init_data:
+        raise ValueError("Нет initData")
+
+    # init_data выглядит как querystring: a=b&c=d&hash=...
+    pairs = [p.split("=", 1) for p in init_data.split("&") if "=" in p]
+    data = {k: v for k, v in pairs}
+
+    received_hash = data.pop("hash", None)
+    if not received_hash:
+        raise ValueError("Нет hash в initData")
+
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(data.items()))
+    secret_key = hashlib.sha256(BOT_TOKEN.encode()).digest()
+    calculated_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+
+    if calculated_hash != received_hash:
+        raise ValueError("Неверная подпись initData")
+
+    user_json = data.get("user")
+    if not user_json:
+        raise ValueError("Нет user в initData")
+
+    return json.loads(user_json)
+
+def upsert_user_profile_from_telegram(user: Dict) -> None:
+    """Обновляет username/first_name/last_name при входе (чтобы в БД было актуально)."""
+    user_id = int(user["id"])
+    username = user.get("username")
+    first_name = user.get("first_name")
+    last_name = user.get("last_name")
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
+    exists = cursor.fetchone() is not None
+
+    if not exists:
+        cursor.execute(
+            """INSERT INTO users (user_id, username, first_name, last_name, balance, experience, level, last_login)
+               VALUES (?, ?, ?, ?, 10000, 0, 1, CURRENT_TIMESTAMP)""",
+            (user_id, username, first_name, last_name)
+        )
+        cursor.execute(
+            """INSERT INTO transactions (user_id, type, amount, description)
+               VALUES (?, 'reward', 10000, 'Стартовый бонус')""",
+            (user_id,)
+        )
+    else:
+        cursor.execute(
+            """UPDATE users
+               SET username = COALESCE(?, username),
+                   first_name = COALESCE(?, first_name),
+                   last_name = COALESCE(?, last_name),
+                   last_login = CURRENT_TIMESTAMP
+               WHERE user_id = ?""",
+            (username, first_name, last_name, user_id)
+        )
+
+    conn.commit()
+    conn.close()
+
 
 def init_db():
     """Инициализация базы данных"""
@@ -484,6 +563,48 @@ def open_case(user_id: int, case_id: int) -> Dict:
         "level": updated_user[2]
     }
 
+
+
+def sell_item(user_id: int, item_id: int) -> Dict:
+    """Продажа одного предмета из инвентаря пользователя"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT sell_price, name FROM items WHERE item_id = ?", (item_id,))
+    item_data = cursor.fetchone()
+    if not item_data:
+        conn.close()
+        return {"error": "Предмет не найден"}
+
+    sell_price, item_name = item_data
+
+    cursor.execute(
+        "SELECT inventory_id FROM inventory WHERE user_id = ? AND item_id = ? ORDER BY obtained_at DESC LIMIT 1",
+        (user_id, item_id)
+    )
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return {"error": "Предмет не найден в инвентаре"}
+
+    inventory_id = row[0]
+
+    cursor.execute("DELETE FROM inventory WHERE inventory_id = ?", (inventory_id,))
+    cursor.execute("UPDATE users SET balance = balance + ? WHERE user_id = ?", (sell_price, user_id))
+    cursor.execute(
+        """INSERT INTO transactions (user_id, type, amount, description)
+           VALUES (?, 'reward', ?, ?)""",
+        (user_id, sell_price, f"Продажа предмета: {item_name}")
+    )
+
+    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+    new_balance = cursor.fetchone()[0]
+
+    conn.commit()
+    conn.close()
+
+    return {"success": True, "sell_price": sell_price, "new_balance": new_balance}
+
 def get_user_data_for_webapp(user_id: int) -> Dict:
     """Получение данных пользователя для веб-приложения"""
     user = get_user(user_id)
@@ -499,6 +620,97 @@ def get_user_data_for_webapp(user_id: int) -> Dict:
         "inventory": inventory,
         "cases": cases
     }
+
+
+
+# ==================== HTTP API для мини-приложения ====================
+@web.middleware
+async def cors_middleware(request: web.Request, handler):
+    # CORS preflight
+    if request.method == "OPTIONS":
+        resp = web.Response(status=204)
+    else:
+        resp = await handler(request)
+
+    origin = request.headers.get("Origin")
+    allow_origin = WEBAPP_ALLOWED_ORIGINS
+    if allow_origin == "*" or not origin:
+        resp.headers["Access-Control-Allow-Origin"] = "*" if allow_origin == "*" else (origin or "*")
+    else:
+        allowed = [o.strip() for o in allow_origin.split(",") if o.strip()]
+        resp.headers["Access-Control-Allow-Origin"] = origin if origin in allowed else allowed[0]
+
+    resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    resp.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Telegram-Init-Data"
+    resp.headers["Access-Control-Max-Age"] = "86400"
+    return resp
+
+async def api_webapp(request: web.Request) -> web.Response:
+    """
+    Единая точка для WebApp.
+    Ожидает JSON: {action: 'init'|'sync_data'|'open_case'|'sell_item'|'get_balance', ...}
+    Заголовок: X-Telegram-Init-Data: window.Telegram.WebApp.initData
+    """
+    try:
+        init_data = request.headers.get("X-Telegram-Init-Data", "")
+        tg_user = verify_telegram_webapp_init_data(init_data)
+        upsert_user_profile_from_telegram(tg_user)
+
+        body = await request.json()
+        action = body.get("action")
+        user_id = int(tg_user["id"])
+
+        if action in ("init", "sync_data"):
+            webapp_data = get_user_data_for_webapp(user_id)
+            webapp_data["success"] = True
+            webapp_data["config"] = {
+                "min_bet": 10,
+                "max_bet": 10000,
+                "daily_bonus": 100,
+                "version": "1.0.0"
+            }
+            return web.json_response(webapp_data)
+
+        if action == "get_balance":
+            user = get_user(user_id)
+            return web.json_response({
+                "success": True,
+                "balance": user["balance"],
+                "experience": user["experience"],
+                "level": user["level"]
+            })
+
+        if action == "open_case":
+            case_id = body.get("case_id")
+            if case_id is None:
+                return web.json_response({"success": False, "error": "case_id обязателен"}, status=400)
+
+            result = open_case(user_id, int(case_id))
+            if "error" in result:
+                return web.json_response({"success": False, "error": result["error"]}, status=400)
+
+            webapp_data = get_user_data_for_webapp(user_id)
+            result.update(webapp_data)
+            return web.json_response(result)
+
+        if action == "sell_item":
+            item_id = body.get("item_id")
+            if item_id is None:
+                return web.json_response({"success": False, "error": "item_id обязателен"}, status=400)
+
+            result = sell_item(user_id, int(item_id))
+            if "error" in result:
+                return web.json_response({"success": False, "error": result["error"]}, status=400)
+
+            webapp_data = get_user_data_for_webapp(user_id)
+            result.update(webapp_data)
+            return web.json_response(result)
+
+        return web.json_response({"success": False, "error": "Неизвестное действие"}, status=400)
+
+    except Exception as e:
+        err = str(e) if DEBUG else "Ошибка авторизации/запроса"
+        return web.json_response({"success": False, "error": err}, status=403)
 
 # Обработчики команд
 @router.message(Command("start"))
@@ -729,10 +941,9 @@ async def handle_unknown(message: Message):
     await message.answer("🤔 Не понимаю вашу команду. Используйте /help для списка команд.")
 
 async def main():
-    """Основная функция запуска бота"""
     # Инициализация базы данных
     init_db()
-    
+
     print("=" * 50)
     print("🎮 Minecraft Case Opening Bot")
     print(f"🤖 Токен: {'*' * len(BOT_TOKEN[:10])}...")
@@ -740,15 +951,27 @@ async def main():
     print(f"🐛 Режим отладки: {DEBUG}")
     print(f"🗄️ База данных: {DB_PATH}")
     print("=" * 50)
+
+    # Запускаем HTTP API для WebApp (через Cloudflare Tunnel)
+    app = web.Application(middlewares=[cors_middleware])
+    app.router.add_route("POST", "/api/webapp", api_webapp)
+    app.router.add_route("OPTIONS", "/api/webapp", api_webapp)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, API_HOST, API_PORT)
+    await site.start()
+
+    print(f"🌐 HTTP API запущен: http://{API_HOST}:{API_PORT}/api/webapp")
     print("✅ Бот успешно запущен!")
     print("⛏️ Ожидание команд...")
     print("=" * 50)
-    
+
     try:
         await dp.start_polling(bot)
-    except Exception as e:
-        print(f"❌ Ошибка при запуске бота: {e}")
-        raise
+    finally:
+        await runner.cleanup()
+
 
 if __name__ == "__main__":
     try:
