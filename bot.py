@@ -15,7 +15,8 @@ from urllib.parse import parse_qsl
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import (
     Message, InlineKeyboardMarkup, 
-    InlineKeyboardButton, WebAppInfo, CallbackQuery
+    InlineKeyboardButton, WebAppInfo, CallbackQuery,
+    ReplyKeyboardMarkup, KeyboardButton
 )
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
@@ -34,6 +35,7 @@ DB_PATH = os.getenv('DATABASE_URL', 'sqlite:///minecraft_cases.db').replace('sql
 API_HOST = os.getenv('API_HOST', '0.0.0.0')
 API_PORT = int(os.getenv('API_PORT', '8080'))
 WEBAPP_ALLOWED_ORIGINS = os.getenv('WEBAPP_ALLOWED_ORIGINS', '*')  # например: https://mrmicse.github.io
+WEBAPP_URL = os.getenv('WEBAPP_URL', 'https://mrmicse.github.io/minecraft-cases/')
 
 
 # Проверка наличия обязательных переменных
@@ -208,6 +210,8 @@ def init_db():
     ''')
     
     conn.commit()
+
+    reset_all_user_balances(cursor)
     
     # Добавляем тестовые данные только если таблицы пустые
     cursor.execute("SELECT COUNT(*) FROM items")
@@ -217,6 +221,10 @@ def init_db():
     conn.commit()
     conn.close()
     print(f"✅ База данных инициализирована: {DB_PATH}")
+
+def reset_all_user_balances(cursor, balance: int = 10000) -> None:
+    """Сбросить баланс всем пользователям до заданного значения."""
+    cursor.execute("UPDATE users SET balance = ?", (balance,))
 
 def add_initial_data(cursor):
     """Добавление начальных данных в БД"""
@@ -626,6 +634,69 @@ def get_user_data_for_webapp(user_id: int) -> Dict:
     }
 
 
+def build_main_menu_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⛏️ Открыть Minecraft Кейсы",
+                    web_app=WebAppInfo(url=WEBAPP_URL)
+                )
+            ],
+            [
+                InlineKeyboardButton(text="👤 Профиль", callback_data="profile"),
+                InlineKeyboardButton(text="🎒 Инвентарь", callback_data="inventory")
+            ],
+            [
+                InlineKeyboardButton(text="💰 Пополнить баланс", callback_data="deposit"),
+                InlineKeyboardButton(text="🔄 Обменять предметы", callback_data="trade")
+            ]
+        ]
+    )
+
+
+def build_back_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")]]
+    )
+
+
+def build_reply_webapp_keyboard() -> ReplyKeyboardMarkup:
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="🕹️ Открыть мини-приложение", web_app=WebAppInfo(url=WEBAPP_URL))]],
+        resize_keyboard=True,
+        one_time_keyboard=False
+    )
+
+
+def build_profile_text(user: Dict, first_name: str, cases_opened: int) -> str:
+    username = user.get("username") or "—"
+    return (
+        "✨ <b>Профиль игрока</b>\n\n"
+        f"👤 <b>Имя:</b> {first_name}\n"
+        f"🔖 <b>Ник:</b> @{username}\n\n"
+        "<pre>"
+        f"Баланс        : {user['balance']} 💎\n"
+        f"Уровень       : {user['level']}\n"
+        f"Опыт          : {user['experience']} XP\n"
+        f"Кейсов открыто: {cases_opened}\n"
+        "</pre>"
+    )
+
+
+def build_inventory_text(inventory: List[Dict]) -> str:
+    if not inventory:
+        return "🎒 <b>Инвентарь пуст</b>\n\nПопробуйте открыть кейс!"
+
+    lines = []
+    for item in inventory:
+        quantity = item.get("quantity", 1)
+        lines.append(f"• {item['icon']} {item['name']} ×{quantity} — {item['price']} 💎")
+
+    items_text = "\n".join(lines)
+    return "🎒 <b>Инвентарь</b>\n\n" + items_text
+
+
 
 # ==================== HTTP API для мини-приложения ====================
 @web.middleware
@@ -734,24 +805,7 @@ async def cmd_start(message: Message):
     conn.commit()
     conn.close()
     
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="⛏️ Открыть Minecraft Кейсы",
-                    web_app=WebAppInfo(url="https://mrmicse.github.io/minecraft-cases/")
-                )
-            ],
-            [
-                InlineKeyboardButton(text="👤 Профиль", callback_data="profile"),
-                InlineKeyboardButton(text="🎒 Инвентарь", callback_data="inventory")
-            ],
-            [
-                InlineKeyboardButton(text="💰 Пополнить баланс", callback_data="deposit"),
-                InlineKeyboardButton(text="🔄 Обменять предметы", callback_data="trade")
-            ]
-        ]
-    )
+    keyboard = build_main_menu_keyboard()
     
     # Получаем статистику открытий
     conn = sqlite3.connect(DB_PATH)
@@ -763,21 +817,102 @@ async def cmd_start(message: Message):
     cases_opened = cursor.fetchone()[0]
     conn.close()
     
-    text = f"""
-⛏️ <b>Добро пожаловать в Minecraft Case Opening, {message.from_user.first_name}!</b>
+    text = (
+        f"⛏️ <b>Добро пожаловать в Minecraft Case Opening, {message.from_user.first_name}!</b>\n\n"
+        f"💰 <b>Баланс:</b> {user['balance']} 💎\n"
+        f"🎮 <b>Уровень:</b> {user['level']}\n"
+        f"⭐ <b>Опыт:</b> {user['experience']} XP\n\n"
+        "🎁 <b>Ежедневный бонус:</b> 100 💎 (/daily)\n"
+        f"🏆 <b>Открыто кейсов:</b> {cases_opened} (/stats)\n\n"
+        "<code>Нажмите кнопку ниже чтобы открыть веб-приложение!</code>"
+    )
 
-💰 <b>Баланс:</b> {user['balance']} 💎
-🎮 <b>Уровень:</b> {user['level']}
-⭐ <b>Опыт:</b> {user['experience']} XP
-
-🎁 <b>Ежедневный бонус:</b> 100 💎 (/daily)
-🏆 <b>Открыто кейсов:</b> {cases_opened} (/stats)
-
-<code>Нажмите кнопку ниже чтобы открыть веб-приложение!</code>
-    """
-    
-    await message.answer(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+    await message.answer(
+        text,
+        reply_markup=keyboard,
+        parse_mode=ParseMode.HTML
+    )
+    await message.answer(
+        "🧭 Кнопка для мини-приложения закреплена под строкой ввода.",
+        reply_markup=build_reply_webapp_keyboard()
+    )
     print(f"📤 Отправлен ответ пользователю {message.from_user.id}")
+
+
+@router.callback_query(F.data == "profile")
+async def handle_profile(callback: CallbackQuery):
+    user = get_user(callback.from_user.id)
+    inventory = get_inventory(user["user_id"])
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT COUNT(*) FROM opening_history WHERE user_id = ?",
+        (user["user_id"],)
+    )
+    cases_opened = cursor.fetchone()[0]
+    conn.close()
+
+    text = build_profile_text(user, callback.from_user.first_name, cases_opened)
+    await callback.message.edit_text(text, reply_markup=build_back_keyboard(), parse_mode=ParseMode.HTML)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "inventory")
+async def handle_inventory(callback: CallbackQuery):
+    user = get_user(callback.from_user.id)
+    inventory = get_inventory(user["user_id"])
+
+    text = build_inventory_text(inventory)
+    await callback.message.edit_text(text, reply_markup=build_back_keyboard(), parse_mode=ParseMode.HTML)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "deposit")
+async def handle_deposit(callback: CallbackQuery):
+    text = (
+        "💰 <b>Пополнение баланса</b>\n\n"
+        "Скоро здесь появятся способы пополнения.\n"
+        "Если нужно — напишите администратору."
+    )
+    await callback.message.edit_text(text, reply_markup=build_back_keyboard(), parse_mode=ParseMode.HTML)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "trade")
+async def handle_trade(callback: CallbackQuery):
+    text = (
+        "🔄 <b>Обмен предметов</b>\n\n"
+        "Функция обмена готовится.\n"
+        "Следите за обновлениями!"
+    )
+    await callback.message.edit_text(text, reply_markup=build_back_keyboard(), parse_mode=ParseMode.HTML)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "back_main")
+async def handle_back_main(callback: CallbackQuery):
+    user = get_user(callback.from_user.id)
+
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT COUNT(*) FROM opening_history WHERE user_id = ?",
+        (user["user_id"],)
+    )
+    cases_opened = cursor.fetchone()[0]
+    conn.close()
+
+    text = (
+        f"⛏️ <b>Добро пожаловать в Minecraft Case Opening, {callback.from_user.first_name}!</b>\n\n"
+        f"💰 <b>Баланс:</b> {user['balance']} 💎\n"
+        f"🎮 <b>Уровень:</b> {user['level']}\n"
+        f"⭐ <b>Опыт:</b> {user['experience']} XP\n\n"
+        "🎁 <b>Ежедневный бонус:</b> 100 💎 (/daily)\n"
+        f"🏆 <b>Открыто кейсов:</b> {cases_opened} (/stats)"
+    )
+    await callback.message.edit_text(text, reply_markup=build_main_menu_keyboard(), parse_mode=ParseMode.HTML)
+    await callback.answer()
 
 @router.message(Command("balance"))
 async def cmd_balance(message: Message):

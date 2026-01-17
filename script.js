@@ -9,7 +9,7 @@ const API_BASE = (new URLSearchParams(location.search).get('api')
 
 // ====== LocalStorage cache busting (forces reset for all users after update) ======
 const APP_STORAGE_KEY = 'minecraftCaseData';
-const APP_STORAGE_VERSION = 3; // increment to reset cached client-side data (forces reset for everyone)
+const APP_STORAGE_VERSION = 4; // increment to reset cached client-side data (forces reset for everyone)
 
 function ensureStorageVersion() {
     try {
