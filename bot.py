@@ -45,7 +45,7 @@ def init_db():
         username TEXT,
         first_name TEXT,
         last_name TEXT,
-        balance INTEGER DEFAULT 10000, -- Увеличено с 1000 до 10000
+        balance INTEGER DEFAULT 10000,
         experience INTEGER DEFAULT 0,
         level INTEGER DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -349,7 +349,7 @@ def open_case(user_id: int, case_id: int) -> Dict:
     
     # Получаем информацию о кейсе
     cursor.execute(
-        "SELECT price, rarity_weights FROM cases WHERE case_id = ?",
+        "SELECT name, price, rarity_weights FROM cases WHERE case_id = ?",
         (case_id,)
     )
     case_data = cursor.fetchone()
@@ -358,7 +358,7 @@ def open_case(user_id: int, case_id: int) -> Dict:
         conn.close()
         return {"error": "Кейс не найден"}
     
-    case_price, rarity_weights_json = case_data
+    case_name, case_price, rarity_weights_json = case_data
     rarity_weights = json.loads(rarity_weights_json)
     
     # Получаем предметы по редкости
@@ -386,7 +386,7 @@ def open_case(user_id: int, case_id: int) -> Dict:
         return {"error": "Не удалось выбрать предмет"}
     
     item = {
-        "item_id": item_data[0],
+        "id": item_data[0],
         "name": item_data[1],
         "icon": item_data[2],
         "rarity": item_data[3],
@@ -397,7 +397,12 @@ def open_case(user_id: int, case_id: int) -> Dict:
     
     # Проверяем баланс
     cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-    balance = cursor.fetchone()[0]
+    balance_result = cursor.fetchone()
+    if not balance_result:
+        conn.close()
+        return {"error": "Пользователь не найден"}
+    
+    balance = balance_result[0]
     
     if balance < case_price:
         conn.close()
@@ -406,21 +411,24 @@ def open_case(user_id: int, case_id: int) -> Dict:
     # Списание средств
     new_balance = update_balance(
         user_id, -case_price, "purchase", 
-        f"Покупка кейса: {case_id}"
+        f"Покупка кейса: {case_name}"
     )
     
     # Добавляем предмет в инвентарь
     cursor.execute(
         """INSERT INTO inventory (user_id, item_id) 
            VALUES (?, ?)""",
-        (user_id, item["item_id"])
+        (user_id, item["id"])
     )
+    
+    # Получаем ID добавленного предмета
+    inventory_id = cursor.lastrowid
     
     # Добавляем в историю открытий
     cursor.execute(
         """INSERT INTO opening_history (user_id, case_id, item_id) 
            VALUES (?, ?, ?)""",
-        (user_id, case_id, item["item_id"])
+        (user_id, case_id, item["id"])
     )
     
     # Начисляем опыт
@@ -430,15 +438,23 @@ def open_case(user_id: int, case_id: int) -> Dict:
         (experience_gained, user_id)
     )
     
+    # Получаем обновленные данные пользователя
+    cursor.execute(
+        "SELECT balance, experience, level FROM users WHERE user_id = ?",
+        (user_id,)
+    )
+    updated_user = cursor.fetchone()
+    
     conn.commit()
     conn.close()
     
     return {
         "success": True,
         "item": item,
-        "new_balance": new_balance,
+        "new_balance": updated_user[0],
         "experience_gained": experience_gained,
-        "case_price": case_price
+        "case_price": case_price,
+        "inventory_id": inventory_id
     }
 
 # Обработчики команд
@@ -498,7 +514,7 @@ async def cmd_start(message: Message):
 🎁 <b>Ежедневный бонус:</b> 100 💎 (/daily)
 🏆 <b>Открыто кейсов:</b> {cases_opened} (/stats)
 
-<code>Начни открывать кейсы и собери свою коллекцию!</code>
+<code>Нажмите кнопку ниже чтобы открыть веб-приложение!</code>
     """
     
     await message.answer(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
@@ -573,41 +589,6 @@ async def cmd_balance(message: Message):
     
     await message.answer(text, parse_mode=ParseMode.HTML)
     print(f"📤 Отправлена статистика пользователю {message.from_user.id}")
-
-@router.message(Command("help"))
-async def cmd_help(message: Message):
-    """Справка по командам"""
-    print(f"📥 Получена команда /help от пользователя {message.from_user.id}")
-    
-    text = """
-⛏️ <b>Minecraft Case Bot - Помощь</b>
-
-<b>Основные команды:</b>
-/start - Запустить бота и открыть меню
-/help - Показать эту справку
-/balance - Показать баланс и статистику
-/daily - Получить ежедневный бонус (100 💎)
-/inventory - Посмотреть инвентарь
-/cases - Посмотреть доступные кейсы
-
-<b>Для админов:</b>
-/admin - Админ панель
-
-<b>Как играть:</b>
-1. Нажмите кнопку "Открыть Minecraft Кейсы"
-2. Выберите кейс в веб-приложении
-3. Откройте кейс и получите предмет
-4. Собирайте коллекцию и повышайте уровень!
-
-<b>Редкости предметов:</b>
-⚪ Обычный - 70% шанс
-🟢 Необычный - 20% шанс
-🔵 Редкий - 7% шанс
-🟣 Эпический - 2.5% шанс
-🟡 Легендарный - 0.5% шанс
-    """
-    
-    await message.answer(text, parse_mode=ParseMode.HTML)
 
 @router.message(Command("inventory"))
 async def cmd_inventory(message: Message):
@@ -685,27 +666,6 @@ async def cmd_cases(message: Message):
     
     await message.answer(text, parse_mode=ParseMode.HTML)
 
-@router.message(Command("admin"))
-async def cmd_admin(message: Message):
-    """Админ панель"""
-    print(f"📥 Получена команда /admin от пользователя {message.from_user.id}")
-    
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ У вас нет прав администратора!")
-        return
-    
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats")],
-            [InlineKeyboardButton(text="👥 Пользователи", callback_data="admin_users")],
-            [InlineKeyboardButton(text="🎁 Добавить предмет", callback_data="admin_add_item")],
-            [InlineKeyboardButton(text="📦 Добавить кейс", callback_data="admin_add_case")],
-            [InlineKeyboardButton(text="💰 Изменить баланс", callback_data="admin_balance")]
-        ]
-    )
-    
-    await message.answer("👑 <b>Админ панель</b>", reply_markup=keyboard, parse_mode=ParseMode.HTML)
-
 @router.callback_query(F.data == "profile")
 async def show_profile(callback: CallbackQuery):
     """Показать профиль"""
@@ -780,7 +740,7 @@ async def handle_web_app_data(message: Message):
             
             if 'error' in result:
                 print(f"❌ Ошибка при открытии кейса: {result['error']}")
-                await message.answer(json.dumps({'error': result['error']}))
+                await message.answer(json.dumps({'success': False, 'error': result['error']}))
                 return
             
             # Отправляем уведомление для редких предметов
@@ -798,6 +758,10 @@ async def handle_web_app_data(message: Message):
                 await message.answer(notification, parse_mode=ParseMode.HTML)
                 print(f"🎉 Пользователь {user_id} получил редкий предмет: {result['item']['name']}")
             
+            # Получаем обновленный инвентарь
+            inventory = get_inventory(user_id)
+            result['inventory'] = inventory
+            
             await message.answer(json.dumps(result))
             print(f"📤 Отправлен результат открытия кейса пользователю {user_id}")
             
@@ -810,11 +774,11 @@ async def handle_web_app_data(message: Message):
             cursor = conn.cursor()
             
             # Получаем цену предмета
-            cursor.execute("SELECT sell_price FROM items WHERE item_id = ?", (item_id,))
+            cursor.execute("SELECT sell_price, name FROM items WHERE item_id = ?", (item_id,))
             item_data = cursor.fetchone()
             
             if not item_data:
-                await message.answer(json.dumps({'error': 'Предмет не найден'}))
+                await message.answer(json.dumps({'success': False, 'error': 'Предмет не найден'}))
                 conn.close()
                 return
             
@@ -824,16 +788,25 @@ async def handle_web_app_data(message: Message):
                 (user_id, item_id)
             )
             
+            if cursor.rowcount == 0:
+                await message.answer(json.dumps({'success': False, 'error': 'Предмет не найден в инвентаре'}))
+                conn.close()
+                return
+            
             # Добавляем деньги
-            sell_price = item_data[0]
+            sell_price, item_name = item_data
             new_balance = update_balance(
-                user_id, sell_price, "reward", f"Продажа предмета {item_id}"
+                user_id, sell_price, "reward", f"Продажа предмета: {item_name}"
             )
+            
+            # Получаем обновленный инвентарь
+            inventory = get_inventory(user_id)
             
             response = {
                 'success': True,
                 'sell_price': sell_price,
-                'new_balance': new_balance
+                'new_balance': new_balance,
+                'inventory': inventory
             }
             
             await message.answer(json.dumps(response))
@@ -841,6 +814,29 @@ async def handle_web_app_data(message: Message):
             conn.close()
             print(f"💰 Пользователь {user_id} продал предмет за {sell_price} 💎")
             
+        elif data.get('action') == 'sync_data':
+            # Синхронизация данных
+            user = get_user(user_id)
+            inventory = get_inventory(user_id)
+            cases = get_cases()
+            
+            response = {
+                'success': True,
+                'user': {
+                    'balance': user['balance'],
+                    'experience': user['experience'],
+                    'level': user['level']
+                },
+                'inventory': inventory,
+                'cases': cases
+            }
+            
+            await message.answer(json.dumps(response))
+            print(f"🔄 Синхронизированы данные пользователя {user_id}")
+            
+    except json.JSONDecodeError as e:
+        print(f"❌ Ошибка декодирования JSON: {e}")
+        await message.answer(json.dumps({'success': False, 'error': 'Неверный формат данных'}))
     except Exception as e:
         print(f"❌ Ошибка обработки Web App данных: {e}")
         if DEBUG:
@@ -848,7 +844,7 @@ async def handle_web_app_data(message: Message):
         else:
             error_msg = "Произошла ошибка. Пожалуйста, попробуйте позже."
         
-        await message.answer(json.dumps({'error': error_msg}))
+        await message.answer(json.dumps({'success': False, 'error': error_msg}))
 
 @router.message()
 async def handle_unknown(message: Message):
