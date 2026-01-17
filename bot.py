@@ -760,7 +760,7 @@ async def handle_web_app_data(message: Message):
             error_msg = "Произошла ошибка. Пожалуйста, попробуйте позже."
         
         await message.answer(json.dumps({'error': error_msg}))
-
+# тест
 async def main():
     """Основная функция запуска бота"""
     # Инициализация базы данных
