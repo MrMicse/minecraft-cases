@@ -15,16 +15,15 @@ from aiogram.types import (
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
 
-# Загрузка переменных окружения из .env файла
+# Загрузка переменных окружения
 load_dotenv()
 
-# Получение конфигурации из переменных окружения
+# Конфигурация
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = int(os.getenv('ADMIN_ID', 0))
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
 DB_PATH = os.getenv('DATABASE_URL', 'sqlite:///minecraft_cases.db').replace('sqlite:///', '')
 
-# Проверка наличия обязательных переменных
 if not BOT_TOKEN:
     raise ValueError("❌ BOT_TOKEN не найден в .env файле!")
 
@@ -45,7 +44,7 @@ def init_db():
         username TEXT,
         first_name TEXT,
         last_name TEXT,
-        balance INTEGER DEFAULT 10000, -- Увеличено с 1000 до 10000
+        balance INTEGER DEFAULT 10000, -- Увеличено до 10000
         experience INTEGER DEFAULT 0,
         level INTEGER DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -53,7 +52,7 @@ def init_db():
     )
     ''')
     
-    # Таблица предметов Minecraft
+    # Таблица предметов
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS items (
         item_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -91,7 +90,7 @@ def init_db():
         price INTEGER NOT NULL,
         icon TEXT NOT NULL,
         description TEXT,
-        rarity_weights TEXT NOT NULL, -- JSON с весами редкостей
+        rarity_weights TEXT NOT NULL,
         texture_url TEXT,
         is_active BOOLEAN DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -127,7 +126,7 @@ def init_db():
     
     conn.commit()
     
-    # Добавляем тестовые данные только если таблицы пустые
+    # Добавляем начальные данные
     cursor.execute("SELECT COUNT(*) FROM items")
     if cursor.fetchone()[0] == 0:
         add_initial_data(cursor)
@@ -441,6 +440,72 @@ def open_case(user_id: int, case_id: int) -> Dict:
         "case_price": case_price
     }
 
+def sync_user_data(user_id: int, client_data: Dict) -> Dict:
+    """Синхронизация данных пользователя"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    
+    client_balance = client_data.get('balance', 10000)
+    client_inventory = client_data.get('inventory', [])
+    
+    # Получаем текущий баланс с сервера
+    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+    server_balance = cursor.fetchone()[0]
+    
+    # Если балансы различаются, синхронизируем
+    if server_balance != client_balance:
+        # Используем клиентский баланс как основной
+        cursor.execute(
+            "UPDATE users SET balance = ? WHERE user_id = ?",
+            (client_balance, user_id)
+        )
+        
+        # Записываем транзакцию
+        difference = client_balance - server_balance
+        if difference != 0:
+            cursor.execute(
+                """INSERT INTO transactions (user_id, type, amount, description) 
+                   VALUES (?, 'sync', ?, 'Синхронизация с клиентом')""",
+                (user_id, difference)
+            )
+    
+    # Синхронизируем инвентарь
+    # Получаем текущий инвентарь с сервера
+    cursor.execute('''
+    SELECT i.name, i.rarity FROM inventory inv
+    JOIN items i ON inv.item_id = i.item_id
+    WHERE inv.user_id = ?
+    ''', (user_id,))
+    
+    server_items = cursor.fetchall()
+    server_items_dict = {f"{item[0]}_{item[1]}": True for item in server_items}
+    
+    # Добавляем отсутствующие предметы из клиента
+    for client_item in client_inventory:
+        item_key = f"{client_item.get('name')}_{client_item.get('rarity')}"
+        if item_key not in server_items_dict:
+            # Находим ID предмета
+            cursor.execute(
+                "SELECT item_id FROM items WHERE name = ? AND rarity = ?",
+                (client_item.get('name'), client_item.get('rarity'))
+            )
+            existing_item = cursor.fetchone()
+            
+            if existing_item:
+                cursor.execute(
+                    "INSERT INTO inventory (user_id, item_id) VALUES (?, ?)",
+                    (user_id, existing_item[0])
+                )
+    
+    conn.commit()
+    conn.close()
+    
+    return {
+        "success": True,
+        "message": "Данные синхронизированы",
+        "balance": client_balance
+    }
+
 # Обработчики команд
 @router.message(Command("start"))
 async def cmd_start(message: Message):
@@ -478,16 +543,6 @@ async def cmd_start(message: Message):
         ]
     )
     
-    # Получаем статистику открытий
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT COUNT(*) FROM opening_history WHERE user_id = ?",
-        (user["user_id"],)
-    )
-    cases_opened = cursor.fetchone()[0]
-    conn.close()
-    
     text = f"""
 ⛏️ <b>Добро пожаловать в Minecraft Case Opening, {message.from_user.first_name}!</b>
 
@@ -496,13 +551,11 @@ async def cmd_start(message: Message):
 ⭐ <b>Опыт:</b> {user['experience']} XP
 
 🎁 <b>Ежедневный бонус:</b> 100 💎 (/daily)
-🏆 <b>Открыто кейсов:</b> {cases_opened} (/stats)
 
 <code>Начни открывать кейсы и собери свою коллекцию!</code>
     """
     
     await message.answer(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
-    print(f"📤 Отправлен ответ пользователю {message.from_user.id}")
 
 @router.message(Command("daily"))
 async def cmd_daily(message: Message):
@@ -526,7 +579,6 @@ async def cmd_daily(message: Message):
     last_daily = cursor.fetchone()
     
     if last_daily:
-        # SQLite возвращает строку, преобразуем в datetime
         last_date = datetime.strptime(last_daily[0], '%Y-%m-%d %H:%M:%S')
         if last_date.date() == datetime.now().date():
             await message.answer("🎁 Вы уже получали ежедневный бонус сегодня!")
@@ -550,7 +602,6 @@ async def cmd_daily(message: Message):
     
     await message.answer(text, parse_mode=ParseMode.HTML)
     conn.close()
-    print(f"📤 Начислен ежедневный бонус пользователю {user_id}")
 
 @router.message(Command("balance"))
 async def cmd_balance(message: Message):
@@ -572,170 +623,6 @@ async def cmd_balance(message: Message):
     """
     
     await message.answer(text, parse_mode=ParseMode.HTML)
-    print(f"📤 Отправлена статистика пользователю {message.from_user.id}")
-
-@router.message(Command("help"))
-async def cmd_help(message: Message):
-    """Справка по командам"""
-    print(f"📥 Получена команда /help от пользователя {message.from_user.id}")
-    
-    text = """
-⛏️ <b>Minecraft Case Bot - Помощь</b>
-
-<b>Основные команды:</b>
-/start - Запустить бота и открыть меню
-/help - Показать эту справку
-/balance - Показать баланс и статистику
-/daily - Получить ежедневный бонус (100 💎)
-/inventory - Посмотреть инвентарь
-/cases - Посмотреть доступные кейсы
-
-<b>Для админов:</b>
-/admin - Админ панель
-
-<b>Как играть:</b>
-1. Нажмите кнопку "Открыть Minecraft Кейсы"
-2. Выберите кейс в веб-приложении
-3. Откройте кейс и получите предмет
-4. Собирайте коллекцию и повышайте уровень!
-
-<b>Редкости предметов:</b>
-⚪ Обычный - 70% шанс
-🟢 Необычный - 20% шанс
-🔵 Редкий - 7% шанс
-🟣 Эпический - 2.5% шанс
-🟡 Легендарный - 0.5% шанс
-    """
-    
-    await message.answer(text, parse_mode=ParseMode.HTML)
-
-@router.message(Command("inventory"))
-async def cmd_inventory(message: Message):
-    """Просмотр инвентаря"""
-    print(f"📥 Получена команда /inventory от пользователя {message.from_user.id}")
-    
-    user = get_user(message.from_user.id)
-    inventory = get_inventory(user["user_id"])
-    
-    if not inventory:
-        await message.answer("🎒 <b>Ваш инвентарь пуст!</b>\n\nОткройте кейсы, чтобы получить предметы! ⛏️", parse_mode=ParseMode.HTML)
-        return
-    
-    # Группируем предметы по редкости
-    items_by_rarity = {}
-    for item in inventory:
-        rarity = item['rarity']
-        if rarity not in items_by_rarity:
-            items_by_rarity[rarity] = []
-        items_by_rarity[rarity].append(item)
-    
-    text = f"""
-🎒 <b>Ваш инвентарь</b>
-
-👤 <b>Игрок:</b> {message.from_user.first_name}
-📦 <b>Всего предметов:</b> {len(inventory)}
-💰 <b>Общая стоимость:</b> {sum(item['price'] * item['quantity'] for item in inventory)} 💎
-"""
-    
-    # Добавляем предметы по редкостям
-    rarity_names = {
-        'legendary': '🟡 Легендарные',
-        'epic': '🟣 Эпические',
-        'rare': '🔵 Редкие',
-        'uncommon': '🟢 Необычные',
-        'common': '⚪ Обычные'
-    }
-    
-    for rarity in ['legendary', 'epic', 'rare', 'uncommon', 'common']:
-        if rarity in items_by_rarity:
-            text += f"\n{rarity_names[rarity]} ({len(items_by_rarity[rarity])}):\n"
-            for i, item in enumerate(items_by_rarity[rarity][:5], 1):
-                text += f"{i}. {item['icon']} {item['name']} - {item['price']} 💎\n"
-            if len(items_by_rarity[rarity]) > 5:
-                text += f"... и еще {len(items_by_rarity[rarity]) - 5} предметов\n"
-    
-    text += "\n📱 <b>Для детального просмотра используйте веб-приложение!</b>"
-    
-    await message.answer(text, parse_mode=ParseMode.HTML)
-    print(f"📤 Отправлен инвентарь пользователю {message.from_user.id}")
-
-@router.message(Command("cases"))
-async def cmd_cases(message: Message):
-    """Просмотр доступных кейсов"""
-    print(f"📥 Получена команда /cases от пользователя {message.from_user.id}")
-    
-    cases = get_cases()
-    
-    text = """
-📦 <b>Доступные кейсы</b>
-
-"""
-    
-    for case in cases:
-        rarity_weights = case['rarity_weights']
-        text += f"""
-{case['icon']} <b>{case['name']}</b> - {case['price']} 💎
-{case['description']}
-Шансы: Обычные {rarity_weights.get('common', 0)}% | Необычные {rarity_weights.get('uncommon', 0)}% | Редкие {rarity_weights.get('rare', 0)}% | Эпические {rarity_weights.get('epic', 0)}% | Легендарные {rarity_weights.get('legendary', 0)}%
-"""
-    
-    text += """
-\n📱 <b>Для открытия кейсов используйте веб-приложение!</b>
-"""
-    
-    await message.answer(text, parse_mode=ParseMode.HTML)
-
-@router.message(Command("admin"))
-async def cmd_admin(message: Message):
-    """Админ панель"""
-    print(f"📥 Получена команда /admin от пользователя {message.from_user.id}")
-    
-    if message.from_user.id != ADMIN_ID:
-        await message.answer("⛔ У вас нет прав администратора!")
-        return
-    
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats")],
-            [InlineKeyboardButton(text="👥 Пользователи", callback_data="admin_users")],
-            [InlineKeyboardButton(text="🎁 Добавить предмет", callback_data="admin_add_item")],
-            [InlineKeyboardButton(text="📦 Добавить кейс", callback_data="admin_add_case")],
-            [InlineKeyboardButton(text="💰 Изменить баланс", callback_data="admin_balance")]
-        ]
-    )
-    
-    await message.answer("👑 <b>Админ панель</b>", reply_markup=keyboard, parse_mode=ParseMode.HTML)
-
-@router.callback_query(F.data == "profile")
-async def show_profile(callback: CallbackQuery):
-    """Показать профиль"""
-    user = get_user(callback.from_user.id)
-    
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT COUNT(*) FROM opening_history WHERE user_id = ?",
-        (user["user_id"],)
-    )
-    cases_opened = cursor.fetchone()[0]
-    conn.close()
-    
-    text = f"""
-👤 <b>Профиль игрока</b>
-
-📛 <b>Имя:</b> {user['first_name']} {user['last_name'] or ''}
-👤 <b>Юзернейм:</b> @{user['username'] or 'Не указан'}
-🆔 <b>ID:</b> <code>{user['user_id']}</code>
-
-💰 <b>Баланс:</b> {user['balance']} 💎
-🎮 <b>Уровень:</b> {user['level']}
-⭐ <b>Опыт:</b> {user['experience']} / {user['level'] * 1000}
-📊 <b>Открыто кейсов:</b> {cases_opened}
-📅 <b>Дата регистрации:</b> {datetime.now().strftime('%d.%m.%Y')}
-    """
-    
-    await callback.message.edit_text(text, parse_mode=ParseMode.HTML)
-    await callback.answer()
 
 @router.message(F.web_app_data)
 async def handle_web_app_data(message: Message):
@@ -745,8 +632,10 @@ async def handle_web_app_data(message: Message):
         data = json.loads(message.web_app_data.data)
         user_id = message.from_user.id
         
-        if data.get('action') == 'init':
-            # Инициализация приложения
+        action = data.get('action')
+        
+        if action == 'get_user_data':
+            # Запрос данных пользователя
             user = get_user(user_id)
             inventory = get_inventory(user_id)
             cases = get_cases()
@@ -769,10 +658,27 @@ async def handle_web_app_data(message: Message):
             }
             
             await message.answer(json.dumps(response))
-            print(f"📤 Отправлены данные инициализации пользователю {user_id}")
+            print(f"📤 Отправлены данные пользователю {user_id}")
             
-        elif data.get('action') == 'open_case':
-            # Открытие кейса
+        elif action == 'update_user_data':
+            # Обновление данных пользователя (синхронизация)
+            client_data = data.get('data', {})
+            
+            print(f"🔄 Синхронизация данных для пользователя {user_id}")
+            
+            result = sync_user_data(user_id, client_data)
+            
+            response = {
+                'success': True,
+                'message': 'Данные синхронизированы',
+                'balance': result['balance']
+            }
+            
+            await message.answer(json.dumps(response))
+            print(f"✅ Данные синхронизированы для пользователя {user_id}")
+            
+        elif action == 'open_case':
+            # Открытие кейса через сервер
             case_id = data.get('case_id')
             print(f"🎰 Пользователь {user_id} открывает кейс {case_id}")
             
@@ -796,50 +702,9 @@ async def handle_web_app_data(message: Message):
 Поздравляем! 🎊
                 """
                 await message.answer(notification, parse_mode=ParseMode.HTML)
-                print(f"🎉 Пользователь {user_id} получил редкий предмет: {result['item']['name']}")
             
             await message.answer(json.dumps(result))
             print(f"📤 Отправлен результат открытия кейса пользователю {user_id}")
-            
-        elif data.get('action') == 'sell_item':
-            # Продажа предмета
-            item_id = data.get('item_id')
-            print(f"💰 Пользователь {user_id} продает предмет {item_id}")
-            
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            
-            # Получаем цену предмета
-            cursor.execute("SELECT sell_price FROM items WHERE item_id = ?", (item_id,))
-            item_data = cursor.fetchone()
-            
-            if not item_data:
-                await message.answer(json.dumps({'error': 'Предмет не найден'}))
-                conn.close()
-                return
-            
-            # Удаляем предмет из инвентаря
-            cursor.execute(
-                "DELETE FROM inventory WHERE user_id = ? AND item_id = ? LIMIT 1",
-                (user_id, item_id)
-            )
-            
-            # Добавляем деньги
-            sell_price = item_data[0]
-            new_balance = update_balance(
-                user_id, sell_price, "reward", f"Продажа предмета {item_id}"
-            )
-            
-            response = {
-                'success': True,
-                'sell_price': sell_price,
-                'new_balance': new_balance
-            }
-            
-            await message.answer(json.dumps(response))
-            conn.commit()
-            conn.close()
-            print(f"💰 Пользователь {user_id} продал предмет за {sell_price} 💎")
             
     except Exception as e:
         print(f"❌ Ошибка обработки Web App данных: {e}")
@@ -849,12 +714,6 @@ async def handle_web_app_data(message: Message):
             error_msg = "Произошла ошибка. Пожалуйста, попробуйте позже."
         
         await message.answer(json.dumps({'error': error_msg}))
-
-@router.message()
-async def handle_unknown(message: Message):
-    """Обработка неизвестных сообщений"""
-    print(f"❓ Получено неизвестное сообщение от {message.from_user.id}: {message.text}")
-    await message.answer("🤔 Не понимаю вашу команду. Используйте /help для списка команд.")
 
 async def main():
     """Основная функция запуска бота"""
