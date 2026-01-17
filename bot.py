@@ -502,6 +502,7 @@ def open_case(user_id: int, case_id: int) -> Dict:
         "level": updated_user[2],
         "cases_opened": updated_user[3]
     }
+}
 
 def get_user_full_data(user_id: int) -> Dict:
     """Получение полных данных пользователя для веб-приложения"""
@@ -519,13 +520,20 @@ def get_user_full_data(user_id: int) -> Dict:
         "inventory": inventory,
         "cases": cases
     }
+}
 
-# Создаем клавиатуру для основного меню (только одна кнопка)
+# Создаем клавиатуру для основного меню с кнопкой веб-приложения
 def create_main_keyboard():
-    """Создание основной клавиатуры с одной кнопкой"""
+    """Создание основной клавиатуры с кнопкой веб-приложения"""
     builder = ReplyKeyboardBuilder()
-    builder.add(KeyboardButton(text="⛏️ Открыть веб-приложение", web_app=WebAppInfo(url="https://mrmicse.github.io/minecraft-cases/")))
-    return builder.as_markup(resize_keyboard=True)
+    builder.add(
+        KeyboardButton(
+            text="⛏️ Открыть веб-приложение", 
+            web_app=WebAppInfo(url="https://mrmicse.github.io/minecraft-cases/")
+        )
+    )
+    builder.adjust(1)
+    return builder.as_markup(resize_keyboard=True, one_time_keyboard=False)
 
 # Функции для создания inline-клавиатур
 def create_main_inline_keyboard():
@@ -1354,7 +1362,9 @@ async def handle_web_app_data(message: Message):
 async def handle_webapp_button(message: Message):
     """Обработка кнопки веб-приложения"""
     print(f"🔄 Пользователь {message.from_user.id} нажал кнопку веб-приложения")
-    await message.answer("Нажмите на кнопку ниже, чтобы открыть веб-приложение:", reply_markup=create_main_keyboard())
+    # Это сообщение не должно приходить, так как кнопка открывает веб-приложение напрямую
+    # Но на всякий случай оставляем обработчик
+    await message.answer("Веб-приложение должно открыться автоматически. Если этого не произошло, обновите Telegram.", reply_markup=create_main_keyboard())
 
 @router.message()
 async def handle_unknown(message: Message):
