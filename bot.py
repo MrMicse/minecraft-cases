@@ -44,7 +44,7 @@ def init_db():
         username TEXT,
         first_name TEXT,
         last_name TEXT,
-        balance INTEGER DEFAULT 10000, -- Увеличено до 10000
+        balance INTEGER DEFAULT 10000,
         experience INTEGER DEFAULT 0,
         level INTEGER DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -116,7 +116,7 @@ def init_db():
     CREATE TABLE IF NOT EXISTS transactions (
         transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
-        type TEXT NOT NULL CHECK(type IN ('deposit', 'withdraw', 'purchase', 'reward')),
+        type TEXT NOT NULL CHECK(type IN ('deposit', 'withdraw', 'purchase', 'reward', 'sync')),
         amount INTEGER NOT NULL,
         description TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -441,70 +441,112 @@ def open_case(user_id: int, case_id: int) -> Dict:
     }
 
 def sync_user_data(user_id: int, client_data: Dict) -> Dict:
-    """Синхронизация данных пользователя"""
+    """Синхронизация данных пользователя с клиента"""
+    print(f"🔄 Синхронизация данных для пользователя {user_id}")
+    
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    client_balance = client_data.get('balance', 10000)
-    client_inventory = client_data.get('inventory', [])
-    
-    # Получаем текущий баланс с сервера
-    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
-    server_balance = cursor.fetchone()[0]
-    
-    # Если балансы различаются, синхронизируем
-    if server_balance != client_balance:
-        # Используем клиентский баланс как основной
-        cursor.execute(
-            "UPDATE users SET balance = ? WHERE user_id = ?",
-            (client_balance, user_id)
-        )
+    try:
+        client_balance = client_data.get('balance', 10000)
+        client_inventory = client_data.get('inventory', [])
+        client_user_id = client_data.get('userId', user_id)
         
-        # Записываем транзакцию
-        difference = client_balance - server_balance
-        if difference != 0:
+        # Получаем текущий баланс с сервера
+        cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+        server_data = cursor.fetchone()
+        
+        if not server_data:
+            # Создаем пользователя если не существует
+            get_user(user_id)
+            cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+            server_data = cursor.fetchone()
+        
+        server_balance = server_data[0]
+        
+        print(f"Клиентский баланс: {client_balance}, Серверный баланс: {server_balance}")
+        
+        # Обновляем баланс из клиента
+        if server_balance != client_balance:
+            print(f"Балансы различаются, обновляем с клиентского: {client_balance}")
+            
             cursor.execute(
-                """INSERT INTO transactions (user_id, type, amount, description) 
-                   VALUES (?, 'sync', ?, 'Синхронизация с клиентом')""",
-                (user_id, difference)
+                "UPDATE users SET balance = ? WHERE user_id = ?",
+                (client_balance, user_id)
             )
-    
-    # Синхронизируем инвентарь
-    # Получаем текущий инвентарь с сервера
-    cursor.execute('''
-    SELECT i.name, i.rarity FROM inventory inv
-    JOIN items i ON inv.item_id = i.item_id
-    WHERE inv.user_id = ?
-    ''', (user_id,))
-    
-    server_items = cursor.fetchall()
-    server_items_dict = {f"{item[0]}_{item[1]}": True for item in server_items}
-    
-    # Добавляем отсутствующие предметы из клиента
-    for client_item in client_inventory:
-        item_key = f"{client_item.get('name')}_{client_item.get('rarity')}"
-        if item_key not in server_items_dict:
-            # Находим ID предмета
+            
+            # Записываем транзакцию синхронизации
+            difference = client_balance - server_balance
+            if difference != 0:
+                cursor.execute(
+                    """INSERT INTO transactions (user_id, type, amount, description) 
+                       VALUES (?, 'sync', ?, 'Синхронизация с клиентом')""",
+                    (user_id, difference)
+                )
+            
+            server_balance = client_balance
+        
+        # Синхронизируем инвентарь
+        # Сначала очищаем существующий инвентарь
+        cursor.execute("DELETE FROM inventory WHERE user_id = ?", (user_id,))
+        
+        # Добавляем предметы из клиента
+        for client_item in client_inventory:
+            # Находим ID предмета по имени и редкости
             cursor.execute(
                 "SELECT item_id FROM items WHERE name = ? AND rarity = ?",
                 (client_item.get('name'), client_item.get('rarity'))
             )
-            existing_item = cursor.fetchone()
+            item_data = cursor.fetchone()
             
-            if existing_item:
+            if item_data:
+                item_id = item_data[0]
+                # Добавляем предмет в инвентарь
+                cursor.execute(
+                    "INSERT INTO inventory (user_id, item_id, obtained_at) VALUES (?, ?, ?)",
+                    (user_id, item_id, client_item.get('obtained_at', datetime.now().isoformat()))
+                )
+            else:
+                # Если предмет не найден, создаем его
+                print(f"Предмет не найден, создаем: {client_item.get('name')}")
+                cursor.execute(
+                    """INSERT INTO items (name, icon, rarity, category, price, sell_price, description, texture_url) 
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        client_item.get('name'),
+                        client_item.get('icon', '❓'),
+                        client_item.get('rarity', 'common'),
+                        'special',
+                        client_item.get('price', 100),
+                        client_item.get('price', 100) // 2,
+                        client_item.get('description', 'Синхронизированный предмет'),
+                        'synced_item.png'
+                    )
+                )
+                new_item_id = cursor.lastrowid
                 cursor.execute(
                     "INSERT INTO inventory (user_id, item_id) VALUES (?, ?)",
-                    (user_id, existing_item[0])
+                    (user_id, new_item_id)
                 )
-    
-    conn.commit()
-    conn.close()
-    
-    return {
-        "success": True,
-        "message": "Данные синхронизированы",
-        "balance": client_balance
-    }
+        
+        conn.commit()
+        conn.close()
+        
+        return {
+            "success": True,
+            "message": "Данные синхронизированы",
+            "balance": server_balance,
+            "inventory_count": len(client_inventory)
+        }
+        
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        print(f"❌ Ошибка синхронизации: {e}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
 
 # Обработчики команд
 @router.message(Command("start"))
@@ -632,6 +674,8 @@ async def handle_web_app_data(message: Message):
         data = json.loads(message.web_app_data.data)
         user_id = message.from_user.id
         
+        print(f"Действие: {data.get('action')}")
+        
         action = data.get('action')
         
         if action == 'get_user_data':
@@ -669,9 +713,9 @@ async def handle_web_app_data(message: Message):
             result = sync_user_data(user_id, client_data)
             
             response = {
-                'success': True,
-                'message': 'Данные синхронизированы',
-                'balance': result['balance']
+                'success': result['success'],
+                'message': result.get('message', 'Данные синхронизированы'),
+                'balance': result.get('balance', 10000)
             }
             
             await message.answer(json.dumps(response))
@@ -706,6 +750,14 @@ async def handle_web_app_data(message: Message):
             await message.answer(json.dumps(result))
             print(f"📤 Отправлен результат открытия кейса пользователю {user_id}")
             
+        else:
+            # Неизвестное действие
+            print(f"⚠️ Неизвестное действие: {action}")
+            await message.answer(json.dumps({'error': 'Неизвестное действие'}))
+            
+    except json.JSONDecodeError as e:
+        print(f"❌ Ошибка декодирования JSON: {e}")
+        await message.answer(json.dumps({'error': 'Неверный формат данных'}))
     except Exception as e:
         print(f"❌ Ошибка обработки Web App данных: {e}")
         if DEBUG:

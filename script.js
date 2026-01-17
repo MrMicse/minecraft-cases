@@ -8,7 +8,8 @@ if (tg) {
 // Глобальные переменные
 let userData = {
     balance: 10000,
-    inventory: []
+    inventory: [],
+    userId: null
 };
 
 let casesData = [];
@@ -116,6 +117,20 @@ async function initApp() {
     showLoading();
     
     try {
+        // Получаем данные из Telegram
+        if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+            const userId = tg.initDataUnsafe.user.id;
+            console.log('Telegram User ID:', userId);
+            userData.userId = userId;
+            
+            // Загружаем данные с сервера
+            await loadUserDataFromServer();
+        } else {
+            console.log('Telegram не обнаружен, используем локальные данные');
+            // Загружаем локальные данные
+            loadUserDataFromLocal();
+        }
+        
         // Загружаем кейсы
         casesData = [
             {
@@ -168,18 +183,11 @@ async function initApp() {
             }
         ];
         
-        // Пытаемся получить данные из Telegram
-        if (tg && tg.initData) {
-            await loadUserDataFromTelegram();
-        } else {
-            // Если нет Telegram, загружаем локальные данные
-            loadUserDataFromLocal();
-        }
-        
         updateUI();
         
     } catch (error) {
         console.error('Ошибка инициализации:', error);
+        // Если произошла ошибка, загружаем локальные данные
         loadUserDataFromLocal();
         updateUI();
     }
@@ -190,24 +198,31 @@ async function initApp() {
     }, 1000);
 }
 
-// Загрузка данных пользователя из Telegram
-async function loadUserDataFromTelegram() {
-    console.log('Загрузка данных из Telegram...');
+// Загрузка данных пользователя с сервера
+async function loadUserDataFromServer() {
+    console.log('Загрузка данных с сервера...');
     
     try {
-        // Отправляем запрос на получение данных
+        if (!tg) {
+            throw new Error('Telegram Web App не доступен');
+        }
+        
+        // Отправляем запрос на получение данных пользователя
         const data = {
             action: 'get_user_data',
             timestamp: Date.now()
         };
         
-        // Отправляем данные через Telegram Web App
+        // Используем sendData для отправки данных в бот
         tg.sendData(JSON.stringify(data));
         
-        console.log('Запрос данных отправлен в Telegram');
+        console.log('Запрос данных отправлен на сервер');
+        
+        // Также загружаем локальные данные на случай проблем с сетью
+        loadUserDataFromLocal();
         
     } catch (error) {
-        console.error('Ошибка загрузки данных из Telegram:', error);
+        console.error('Ошибка загрузки данных с сервера:', error);
         throw error;
     }
 }
@@ -222,6 +237,7 @@ function loadUserDataFromLocal() {
             const data = JSON.parse(savedData);
             userData.balance = data.balance || 10000;
             inventoryData = data.inventory || [];
+            userData.userId = data.userId || null;
             console.log('Локальные данные загружены');
         } else {
             // Если данных нет, устанавливаем дефолтные
@@ -237,32 +253,43 @@ function loadUserDataFromLocal() {
 }
 
 // Сохранение данных пользователя
-function saveUserData() {
+async function saveUserData() {
     try {
         // Сохраняем локально
         const data = {
             balance: userData.balance,
             inventory: inventoryData,
+            userId: userData.userId,
             timestamp: Date.now()
         };
         
         localStorage.setItem('minecraft_case_data', JSON.stringify(data));
         console.log('Данные сохранены локально');
         
-        // Отправляем данные в Telegram если доступен
-        if (tg && tg.initData) {
-            const telegramData = {
-                action: 'update_user_data',
-                data: data,
-                timestamp: Date.now()
-            };
-            
-            tg.sendData(JSON.stringify(telegramData));
-            console.log('Данные отправлены в Telegram');
+        // Отправляем данные на сервер если доступен Telegram
+        if (tg && userData.userId) {
+            await syncWithServer(data);
         }
         
     } catch (error) {
         console.error('Ошибка сохранения данных:', error);
+    }
+}
+
+// Синхронизация с сервером
+async function syncWithServer(data) {
+    try {
+        const syncData = {
+            action: 'update_user_data',
+            data: data,
+            timestamp: Date.now()
+        };
+        
+        tg.sendData(JSON.stringify(syncData));
+        console.log('Данные отправлены на сервер');
+        
+    } catch (error) {
+        console.error('Ошибка синхронизации с сервером:', error);
     }
 }
 
@@ -561,8 +588,8 @@ async function openCase() {
         obtained_at: new Date().toISOString()
     });
     
-    // Сохраняем данные
-    saveUserData();
+    // Сохраняем данные (синхронизируем с сервером)
+    await saveUserData();
     
     // Запускаем рулетку
     await startRouletteForCase(wonItem);
@@ -946,41 +973,75 @@ function initEventListeners() {
         console.log('Сохранение данных перед закрытием...');
         saveUserData();
     });
+    
+    // Сохраняем при закрытии мини  приложения
+    if (tg) {
+        tg.onEvent('viewportChanged', () => {
+            console.log('Сохранение данных при изменении вьюпорта...');
+            saveUserData();
+        });
+        
+        tg.onEvent('themeChanged', () => {
+            console.log('Сохранение данных при изменении темы...');
+            saveUserData();
+        });
+    }
 }
 
 // Обработка сообщений от Telegram бота
 if (tg) {
+    // Обработка данных от бота
     tg.onEvent('webAppDataReceived', (data) => {
         try {
             console.log('Получены данные от Telegram:', data);
-            const parsedData = JSON.parse(data);
             
-            if (parsedData.user) {
-                // Обновляем данные с сервера
-                userData.balance = parsedData.user.balance || 10000;
-                userData.inventory = parsedData.inventory || [];
-                inventoryData = parsedData.inventory || [];
-                casesData = parsedData.cases || [];
-                
-                updateUI();
-                console.log('Данные синхронизированы с сервером');
-                
-                // Сохраняем локально для кэша
-                saveUserData();
+            if (typeof data === 'string') {
+                const parsedData = JSON.parse(data);
+                handleTelegramData(parsedData);
+            } else if (typeof data === 'object') {
+                handleTelegramData(data);
             }
-            
-            if (parsedData.success && parsedData.action === 'open_case') {
-                // Обновляем баланс после открытия кейса
-                if (parsedData.new_balance !== undefined) {
-                    userData.balance = parsedData.new_balance;
-                    updateUI();
-                }
-            }
-            
         } catch (error) {
             console.error('Error parsing web app data:', error);
         }
     });
+    
+    // Обработчик для событий закрытия
+    tg.onEvent('closing', () => {
+        console.log('Мини-приложение закрывается, сохраняем данные...');
+        saveUserData();
+    });
+}
+
+// Обработка данных от Telegram
+function handleTelegramData(parsedData) {
+    if (parsedData.success && parsedData.user) {
+        // Обновляем данные с сервера
+        userData.balance = parsedData.user.balance || 10000;
+        userData.inventory = parsedData.inventory || [];
+        inventoryData = parsedData.inventory || [];
+        casesData = parsedData.cases || [];
+        
+        updateUI();
+        console.log('Данные синхронизированы с сервером');
+        
+        // Сохраняем локально для кэша
+        const dataToSave = {
+            balance: userData.balance,
+            inventory: inventoryData,
+            userId: userData.userId,
+            timestamp: Date.now()
+        };
+        localStorage.setItem('minecraft_case_data', JSON.stringify(dataToSave));
+    }
+    
+    if (parsedData.success && parsedData.action === 'open_case') {
+        // Обновляем баланс после открытия кейса
+        if (parsedData.new_balance !== undefined) {
+            userData.balance = parsedData.new_balance;
+            updateUI();
+        }
+    }
 }
 
 // Инициализация при загрузке DOM
