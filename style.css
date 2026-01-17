@@ -1602,7 +1602,7 @@ p, h1, h2, h3, h4, h5, h6, span, div {
     display: flex;
     gap: 8px;
     height: auto;
-    transition: transform 0.08s linear;
+    transition: none;
     will-change: transform;
     transform-style: preserve-3d;
     align-items: center;

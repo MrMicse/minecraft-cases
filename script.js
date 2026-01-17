@@ -1,32 +1,3 @@
-// Cloudflare Tunnel API endpoint
-// Cloudflare Tunnel public HTTPS URL.
-// IMPORTANT: Quick Tunnel URL changes after every restart.
-// You can update it here OR pass ?api=https://NEW.trycloudflare.com in the WebApp URL.
-const API_BASE = (new URLSearchParams(location.search).get('api')
-    || localStorage.getItem('API_BASE')
-    || 'https://shelf-consultancy-reasons-strong.trycloudflare.com').trim().replace(/\/+$/, '');
-
-// Demo mode is allowed only when explicitly enabled (?demo=1) or when Telegram WebApp is unavailable.
-const DEMO_MODE = new URLSearchParams(location.search).get('demo') === '1';
-
-
-// ====== LocalStorage cache busting (forces reset for all users after update) ======
-const APP_STORAGE_KEY = 'minecraftCaseData';
-const APP_STORAGE_VERSION = 4; // increment to reset cached client-side data (forces reset for everyone)
-
-function ensureStorageVersion() {
-    try {
-        const raw = localStorage.getItem(APP_STORAGE_KEY);
-        if (!raw) return;
-        const parsed = JSON.parse(raw);
-        if (!parsed || parsed.__v !== APP_STORAGE_VERSION) {
-            localStorage.removeItem(APP_STORAGE_KEY);
-        }
-    } catch (e) {
-        localStorage.removeItem(APP_STORAGE_KEY);
-    }
-}
-
 // Инициализация Telegram Web App
 const tg = window.Telegram?.WebApp;
 if (tg) {
@@ -46,9 +17,6 @@ let userData = {
     level: 1
 };
 
-// Server-provided config (e.g., is_admin)
-let appConfig = {};
-
 let casesData = [];
 let inventoryData = [];
 let currentCase = null;
@@ -64,11 +32,6 @@ let winningItemIndex = 0;
 let animationStartTime = 0;
 let isRouletteActive = false;
 let animationPhase = 0;
-
-// Helper: accept both camelCase and snake_case from backend
-function getCaseRarityWeights(caseItem) {
-    return caseItem?.rarityWeights || caseItem?.rarity_weights || {};
-}
 
 // DOM элементы
 const elements = {
@@ -175,11 +138,8 @@ function easeOutCubic(t) {
 async function initApp() {
     console.log('Инициализация приложения...');
     showLoading();
-
+    
     try {
-        // Force-reset stale cached data for all users after update
-        ensureStorageVersion();
-
         // Сначала пытаемся загрузить из localStorage для быстрого отображения
         loadFromLocalStorage();
         
@@ -189,10 +149,7 @@ async function initApp() {
         // Обновляем UI
         updateUI();
         
-    
-        // Запускаем обновление баланса в "реальном времени"
-        startBalancePolling();
-} catch (error) {
+    } catch (error) {
         console.error('Ошибка инициализации:', error);
         alert('Ошибка загрузки данных. Пожалуйста, обновите страницу.');
     }
@@ -206,14 +163,15 @@ async function initApp() {
 
 // Загрузка из localStorage
 function loadFromLocalStorage() {
-    // IMPORTANT: balance is authoritative on the server (bot DB).
-    // We only keep inventory in localStorage as a UI cache.
-    const savedData = localStorage.getItem(APP_STORAGE_KEY);
+    const savedData = localStorage.getItem('minecraftCaseData');
     if (savedData) {
         try {
             const parsed = JSON.parse(savedData);
+            userData.balance = parsed.balance || 0;
+            userData.experience = parsed.experience || 0;
+            userData.level = parsed.level || 1;
             inventoryData = parsed.inventory || [];
-            console.log('Инвентарь загружен из localStorage (кэш)');
+            console.log('Данные загружены из localStorage');
         } catch (e) {
             console.error('Ошибка загрузки из localStorage:', e);
         }
@@ -222,15 +180,13 @@ function loadFromLocalStorage() {
 
 // Сохранение в localStorage
 function saveToLocalStorage() {
-    // We store a small cache for faster UI, but server remains the source of truth.
     const data = {
-        __v: APP_STORAGE_VERSION,
         balance: userData.balance,
         experience: userData.experience,
         level: userData.level,
         inventory: inventoryData
     };
-    localStorage.setItem(APP_STORAGE_KEY, JSON.stringify(data));
+    localStorage.setItem('minecraftCaseData', JSON.stringify(data));
 }
 
 // Синхронизация с сервером через Telegram Web App
@@ -246,8 +202,6 @@ async function syncWithServer() {
             userData.balance = response.user.balance || 0;
             userData.experience = response.user.experience || 0;
             userData.level = response.user.level || 1;
-
-            appConfig = response.config || {};
             
             inventoryData = response.inventory || [];
             casesData = response.cases || [];
@@ -260,75 +214,18 @@ async function syncWithServer() {
                 inventoryCount: inventoryData.length,
                 casesCount: casesData.length
             });
-
-            // Админ-хелперы (не светим в UI, но удобно дергать из консоли)
-            if (appConfig.is_admin) {
-                window.adminResetAllBalances = async (balance = (appConfig.default_balance ?? 10000)) => {
-                    const resp = await sendDataToBot('admin_reset_all_balances', { balance });
-                    if (resp?.success) {
-                        console.log(`✅ Баланс всем установлен: ${resp.balance_set} (затронуто: ${resp.affected})`);
-                        // Подтягиваем актуальные данные для админа
-                        await syncWithServer();
-                        updateUI();
-                    } else {
-                        console.error('❌ Не удалось сбросить баланс:', resp?.error);
-                        alert(resp?.error || 'Не удалось выполнить операцию');
-                    }
-                    return resp;
-                };
-                console.log('👑 Админ-режим: доступна функция window.adminResetAllBalances(10000)');
-            }
             
             return response;
         } else {
             console.error('Ошибка синхронизации:', response?.error);
-            // В Telegram не уходим в демо автоматически, чтобы не разъезжались балансы.
-            if (!tg || DEMO_MODE) {
-                loadDemoData();
-            } else {
-                alert('Нет соединения с сервером. Попробуйте позже или перезапустите приложение.');
-            }
+            loadDemoData();
             return null;
         }
     } catch (error) {
         console.error('Ошибка синхронизации:', error);
-        if (!tg || DEMO_MODE) {
-            loadDemoData();
-        } else {
-            alert('Нет соединения с сервером. Попробуйте позже или перезапустите приложение.');
-        }
+        loadDemoData();
         return null;
     }
-}
-
-
-
-// ===== Реалтайм обновление баланса (polling) =====
-let _balancePollTimer = null;
-
-function startBalancePolling() {
-    if (_balancePollTimer) return;
-
-    // Обновляем баланс раз в 2 секунды
-    _balancePollTimer = setInterval(async () => {
-        try {
-            const resp = await sendDataToBot('get_balance', {});
-            if (resp && resp.success && typeof resp.balance === 'number') {
-                // Обновляем только баланс/уровень/опыт
-                userData.balance = resp.balance;
-                if (typeof resp.experience === 'number') userData.experience = resp.experience;
-                if (typeof resp.level === 'number') userData.level = resp.level;
-
-                // Сохраняем и обновляем UI
-                saveToLocalStorage();
-                if (elements.balance) {
-                    elements.balance.textContent = userData.balance.toLocaleString();
-                }
-            }
-        } catch (e) {
-            // молча
-        }
-    }, 2000);
 }
 
 // Загрузка демо-данных
@@ -396,54 +293,83 @@ function loadDemoData() {
 
 // Отправка данных боту через Web App - УПРОЩЕННАЯ ВЕРСИЯ
 async function sendDataToBot(action, data) {
-    // Если Telegram Web App недоступен — работаем в демо-режиме
-    // В Telegram демо разрешаем только при явном ?demo=1
-    if (!tg) {
-        console.log('Telegram Web App не доступен, используем демо-режим');
-        return handleDemoMode(action, data);
-    }
-
-    // ВНИМАНИЕ: tg.sendData не предназначен для получения ответа от бота в WebApp.
-    // Поэтому используем HTTP API (через Cloudflare Tunnel).
-    const payload = {
-        action: action,
-        ...data,
-        timestamp: Date.now()
-    };
-
-    try {
-        const response = await fetch(`${API_BASE}/api/webapp`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                // initData используется сервером для проверки подписи Telegram
-                'X-Telegram-Init-Data': tg.initData || ''
-            },
-            body: JSON.stringify(payload)
+    return new Promise((resolve) => {
+        if (!tg) {
+            console.log('Telegram Web App не доступен, используем демо-режим');
+            resolve(handleDemoMode(action, data));
+            return;
+        }
+        
+        console.log(`Отправка данных боту: ${action}`, data);
+        
+        // Подготавливаем данные для отправки
+        const requestData = JSON.stringify({
+            action: action,
+            ...data,
+            timestamp: Date.now()
         });
-
-        if (!response.ok) {
-            const text = await response.text().catch(() => '');
-            console.error('HTTP API error:', response.status, text);
-            if (DEMO_MODE) return handleDemoMode(action, data);
-            return { success: false, error: 'Сервер недоступен' };
-        }
-
-        const json = await response.json().catch(() => null);
-        if (!json) {
-            console.error('Не удалось распарсить ответ сервера');
-            if (DEMO_MODE) return handleDemoMode(action, data);
-            return { success: false, error: 'Некорректный ответ сервера' };
-        }
-
-        return json;
-    } catch (error) {
-        console.error('Ошибка запроса к API:', error);
-        if (DEMO_MODE) return handleDemoMode(action, data);
-        return { success: false, error: 'Ошибка сети' };
-    }
+        
+        console.log('Отправляемые данные:', requestData);
+        
+        // Глобальная переменная для хранения обработчика
+        window._botResponseHandler = null;
+        
+        // Создаем обработчик для получения ответа от бота
+        window._botResponseHandler = async (event) => {
+            // Этот обработчик будет вызываться когда бот ответит
+            if (event.data && event.data.type === 'message') {
+                try {
+                    const message = event.data;
+                    console.log('Получено сообщение от бота:', message);
+                    
+                    if (message.text) {
+                        try {
+                            const parsedData = JSON.parse(message.text);
+                            console.log('Парсинг ответа от бота:', parsedData);
+                            
+                            // Удаляем обработчик после получения ответа
+                            if (window._botResponseHandler) {
+                                window.removeEventListener('message', window._botResponseHandler);
+                                window._botResponseHandler = null;
+                            }
+                            resolve(parsedData);
+                        } catch (e) {
+                            console.error('Ошибка парсинга JSON:', e);
+                            if (window._botResponseHandler) {
+                                window.removeEventListener('message', window._botResponseHandler);
+                                window._botResponseHandler = null;
+                            }
+                            resolve(handleDemoMode(action, data));
+                        }
+                    }
+                } catch (e) {
+                    console.error('Ошибка обработки сообщения:', e);
+                    if (window._botResponseHandler) {
+                        window.removeEventListener('message', window._botResponseHandler);
+                        window._botResponseHandler = null;
+                    }
+                    resolve(handleDemoMode(action, data));
+                }
+            }
+        };
+        
+        // Добавляем обработчик сообщений
+        window.addEventListener('message', window._botResponseHandler);
+        
+        // Отправляем данные через Telegram Web App
+        tg.sendData(requestData);
+        
+        // Таймаут на случай если ответ не придет
+        setTimeout(() => {
+            console.warn('Таймаут запроса, используем демо-режим');
+            if (window._botResponseHandler) {
+                window.removeEventListener('message', window._botResponseHandler);
+                window._botResponseHandler = null;
+            }
+            resolve(handleDemoMode(action, data));
+        }, 3000); // Уменьшаем таймаут до 3 секунд
+    });
 }
-
 
 // Обработка действий в демо-режиме
 function handleDemoMode(action, data) {
@@ -614,7 +540,7 @@ function getPreviewItems(caseItem) {
     const allItems = [];
     
     // Собираем все возможные предметы для этого кейса
-    for (const [rarity, weight] of Object.entries(getCaseRarityWeights(caseItem))) {
+    for (const [rarity, weight] of Object.entries(caseItem.rarityWeights)) {
         if (weight > 0) {
             const items = minecraftItems[rarity] || [];
             allItems.push(...items);
@@ -718,7 +644,7 @@ function createCaseItemsPreview(caseItem) {
     
     // Собираем все предметы для этого кейса
     const allItems = [];
-    for (const [rarity, weight] of Object.entries(getCaseRarityWeights(caseItem))) {
+    for (const [rarity, weight] of Object.entries(caseItem.rarityWeights)) {
         if (weight > 0 && minecraftItems[rarity]) {
             const items = minecraftItems[rarity].map(item => ({
                 ...item,
@@ -783,7 +709,7 @@ function generateInitialRouletteSequence(caseItem) {
     
     // Собираем все возможные предметы для этого кейса
     const allItems = [];
-    for (const [rarity, weight] of Object.entries(getCaseRarityWeights(caseItem))) {
+    for (const [rarity, weight] of Object.entries(caseItem.rarityWeights)) {
         if (weight > 0 && minecraftItems[rarity]) {
             const items = minecraftItems[rarity];
             allItems.push(...items.map(item => ({
@@ -911,12 +837,11 @@ async function openCase() {
 
 // Генерация выигрышного предмета
 function generateWonItem(caseItem) {
-    const weights = getCaseRarityWeights(caseItem);
-    const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0);
+    const totalWeight = Object.values(caseItem.rarityWeights).reduce((a, b) => a + b, 0);
     let randomWeight = Math.random() * totalWeight;
     
     let selectedRarity = 'common';
-    for (const [rarity, weight] of Object.entries(getCaseRarityWeights(caseItem))) {
+    for (const [rarity, weight] of Object.entries(caseItem.rarityWeights)) {
         randomWeight -= weight;
         if (randomWeight <= 0) {
             selectedRarity = rarity;
