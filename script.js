@@ -144,7 +144,15 @@ async function initApp() {
     showLoading();
     
     try {
-        await syncWithServer();
+        // Сначала пробуем синхронизироваться с сервером
+        const result = await syncWithServer();
+        
+        if (result && result.success) {
+            console.log('Данные успешно загружены с сервера');
+        } else {
+            console.log('Используем локальные данные');
+        }
+        
     } catch (error) {
         console.error('Ошибка инициализации:', error);
         alert('Ошибка загрузки данных. Пожалуйста, обновите страницу.');
@@ -163,12 +171,12 @@ async function syncWithServer() {
     console.log('Синхронизация с сервером...');
     
     try {
-        // Отправляем запрос на синхронизацию
+        // Отправляем запрос на синхронизацию через Telegram Web App
         const response = await sendDataToBot('init', {});
         
         if (response && response.success) {
             // Используем данные с сервера
-            userData.balance = response.user.balance || 10000;
+            userData.balance = response.user.balance || 0;
             userData.experience = response.user.experience || 0;
             userData.level = response.user.level || 1;
             
@@ -249,22 +257,33 @@ function loadDemoData() {
         }
     ];
     
-    userData.balance = 10000;
-    userData.experience = 0;
-    userData.level = 1;
-    inventoryData = [];
+    // Используем данные из localStorage или начальные значения
+    const savedData = localStorage.getItem('minecraftCaseData');
+    if (savedData) {
+        const parsed = JSON.parse(savedData);
+        userData.balance = parsed.balance || 10000;
+        userData.experience = parsed.experience || 0;
+        userData.level = parsed.level || 1;
+        inventoryData = parsed.inventory || [];
+    } else {
+        userData.balance = 10000;
+        userData.experience = 0;
+        userData.level = 1;
+        inventoryData = [];
+    }
     
     console.log('Демо-данные загружены');
 }
 
 // Отправка данных боту через Web App
 async function sendDataToBot(action, data) {
-    if (!tg) {
-        console.error('Telegram Web App не доступен, используем демо-режим');
-        return handleDemoMode(action, data);
-    }
-    
-    try {
+    return new Promise((resolve) => {
+        if (!tg) {
+            console.error('Telegram Web App не доступен, используем демо-режим');
+            resolve(handleDemoMode(action, data));
+            return;
+        }
+        
         console.log(`Отправка данных боту: ${action}`, data);
         
         // Подготавливаем данные для отправки
@@ -276,58 +295,94 @@ async function sendDataToBot(action, data) {
         
         console.log('Отправляемые данные:', requestData);
         
+        // Обработчик для получения ответа от бота
+        const handleBotResponse = async (event) => {
+            // Этот обработчик будет вызываться когда бот ответит
+            if (event.data && event.data.type === 'message') {
+                try {
+                    const message = event.data;
+                    console.log('Получено сообщение от бота:', message);
+                    
+                    if (message.text) {
+                        try {
+                            const parsedData = JSON.parse(message.text);
+                            console.log('Парсинг ответа от бота:', parsedData);
+                            
+                            // Удаляем обработчик после получения ответа
+                            window.removeEventListener('message', handleBotResponse);
+                            resolve(parsedData);
+                        } catch (e) {
+                            console.error('Ошибка парсинга JSON:', e);
+                            window.removeEventListener('message', handleBotResponse);
+                            resolve(handleDemoMode(action, data));
+                        }
+                    }
+                } catch (e) {
+                    console.error('Ошибка обработки сообщения:', e);
+                    window.removeEventListener('message', handleBotResponse);
+                    resolve(handleDemoMode(action, data));
+                }
+            }
+        };
+        
+        // Добавляем обработчик сообщений
+        window.addEventListener('message', handleBotResponse);
+        
         // Отправляем данные через Telegram Web App
         tg.sendData(requestData);
         
-        // Ожидаем ответа от бота
-        return new Promise((resolve) => {
-            let responseReceived = false;
-            
-            // Обработчик для получения ответа от бота
-            const messageHandler = async (event) => {
-                // Проверяем, что это ответ от нашего бота
-                if (event.data && typeof event.data === 'object') {
-                    try {
-                        const message = event.data;
-                        console.log('Получено сообщение от бота:', message);
-                        
-                        // Проверяем, что это ответ на наше действие
-                        if (message.text) {
-                            try {
-                                const parsedData = JSON.parse(message.text);
-                                console.log('Парсинг ответа от бота:', parsedData);
-                                
-                                if (!responseReceived) {
-                                    responseReceived = true;
-                                    window.removeEventListener('message', messageHandler);
-                                    resolve(parsedData);
-                                }
-                            } catch (e) {
-                                console.error('Ошибка парсинга JSON:', e);
-                            }
-                        }
-                    } catch (e) {
-                        console.error('Ошибка обработки сообщения:', e);
-                    }
-                }
-            };
-            
-            // Добавляем обработчик сообщений
-            window.addEventListener('message', messageHandler);
-            
-            // Таймаут на случай если ответ не придет
-            setTimeout(() => {
-                if (!responseReceived) {
-                    console.warn('Таймаут запроса, используем демо-режим');
-                    window.removeEventListener('message', messageHandler);
-                    resolve(handleDemoMode(action, data));
-                }
-            }, 5000);
-        });
+        // Таймаут на случай если ответ не придет
+        setTimeout(() => {
+            console.warn('Таймаут запроса, используем демо-режим');
+            window.removeEventListener('message', handleBotResponse);
+            resolve(handleDemoMode(action, data));
+        }, 10000); // Увеличиваем таймаут до 10 секунд
+    });
+}
+
+// Обработка ответов от бота (для демо-режима)
+if (tg) {
+    // Обработчик для получения ответов от бота
+    tg.onEvent('message', (message) => {
+        console.log('Получено сообщение от бота через onEvent:', message);
         
-    } catch (error) {
-        console.error('Ошибка отправки данных боту:', error);
-        return handleDemoMode(action, data);
+        try {
+            if (message.text) {
+                const parsedData = JSON.parse(message.text);
+                console.log('Парсинг ответа от бота:', parsedData);
+                
+                // Обрабатываем ответ
+                handleBotResponseMessage(parsedData);
+            }
+        } catch (e) {
+            console.error('Ошибка обработки сообщения от бота:', e);
+        }
+    });
+}
+
+function handleBotResponseMessage(response) {
+    console.log('Обработка ответа от бота:', response);
+    
+    if (response && response.success) {
+        // Обновляем данные с сервера
+        if (response.user) {
+            userData.balance = response.user.balance || userData.balance;
+            userData.experience = response.user.experience || userData.experience;
+            userData.level = response.user.level || userData.level;
+        }
+        
+        if (response.inventory) {
+            inventoryData = response.inventory;
+        }
+        
+        if (response.cases) {
+            casesData = response.cases;
+        }
+        
+        // Обновляем UI
+        updateUI();
+        
+        console.log('Данные обновлены с сервера');
     }
 }
 
@@ -340,21 +395,12 @@ function handleDemoMode(action, data) {
             return {
                 success: true,
                 user: {
-                    balance: 10000,
-                    experience: 0,
-                    level: 1
+                    balance: userData.balance,
+                    experience: userData.experience,
+                    level: userData.level
                 },
-                inventory: [],
-                cases: [
-                    {
-                        id: 1,
-                        name: '🍎 Кейс с Едой',
-                        price: 100,
-                        icon: '🍎',
-                        description: 'Содержит разнообразную еду и напитки',
-                        rarityWeights: { common: 60, uncommon: 40 }
-                    }
-                ],
+                inventory: inventoryData,
+                cases: casesData,
                 config: {
                     min_bet: 10,
                     max_bet: 10000,
@@ -364,14 +410,27 @@ function handleDemoMode(action, data) {
             };
             
         case 'open_case':
-            // Генерируем случайный предмет
             const caseItem = casesData.find(c => c.id === data.case_id);
             if (!caseItem) {
                 return { success: false, error: 'Кейс не найден' };
             }
             
+            if (userData.balance < caseItem.price) {
+                return { success: false, error: 'Недостаточно средств' };
+            }
+            
             const wonItem = generateWonItem(caseItem);
             userData.balance -= caseItem.price;
+            
+            // Добавляем предмет в инвентарь
+            inventoryData.unshift({
+                ...wonItem,
+                id: Date.now(),
+                obtained_at: new Date().toISOString()
+            });
+            
+            // Сохраняем в localStorage
+            saveToLocalStorage();
             
             return {
                 success: true,
@@ -381,12 +440,69 @@ function handleDemoMode(action, data) {
                 case_price: caseItem.price,
                 experience: userData.experience,
                 level: userData.level,
-                inventory: [...inventoryData, { ...wonItem, obtained_at: new Date().toISOString() }]
+                inventory: inventoryData,
+                user: {
+                    balance: userData.balance,
+                    experience: userData.experience,
+                    level: userData.level
+                }
+            };
+            
+        case 'sell_item':
+            const itemId = data.item_id;
+            const itemIndex = inventoryData.findIndex(item => item.id === itemId);
+            
+            if (itemIndex === -1) {
+                return { success: false, error: 'Предмет не найден' };
+            }
+            
+            const soldItem = inventoryData[itemIndex];
+            userData.balance += soldItem.price;
+            
+            // Удаляем предмет из инвентаря
+            inventoryData.splice(itemIndex, 1);
+            
+            // Сохраняем в localStorage
+            saveToLocalStorage();
+            
+            return {
+                success: true,
+                sell_price: soldItem.price,
+                new_balance: userData.balance,
+                inventory: inventoryData,
+                user: {
+                    balance: userData.balance,
+                    experience: userData.experience,
+                    level: userData.level
+                }
+            };
+            
+        case 'sync_data':
+            return {
+                success: true,
+                user: {
+                    balance: userData.balance,
+                    experience: userData.experience,
+                    level: userData.level
+                },
+                inventory: inventoryData,
+                cases: casesData
             };
             
         default:
             return { success: false, error: 'Демо-режим: действие не поддерживается' };
     }
+}
+
+// Сохранение данных в localStorage
+function saveToLocalStorage() {
+    const data = {
+        balance: userData.balance,
+        experience: userData.experience,
+        level: userData.level,
+        inventory: inventoryData
+    };
+    localStorage.setItem('minecraftCaseData', JSON.stringify(data));
 }
 
 // Обновление интерфейса

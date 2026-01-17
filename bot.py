@@ -477,6 +477,22 @@ def open_case(user_id: int, case_id: int) -> Dict:
         "level": updated_user[2]
     }
 
+def get_user_data_for_webapp(user_id: int) -> Dict:
+    """Получение данных пользователя для веб-приложения"""
+    user = get_user(user_id)
+    inventory = get_inventory(user_id)
+    cases = get_cases()
+    
+    return {
+        "user": {
+            "balance": user["balance"],
+            "experience": user["experience"],
+            "level": user["level"]
+        },
+        "inventory": inventory,
+        "cases": cases
+    }
+
 # Обработчики команд
 @router.message(Command("start"))
 async def cmd_start(message: Message):
@@ -722,42 +738,32 @@ async def handle_web_app_data(message: Message):
     """Обработка данных из Web App"""
     try:
         print(f"🌐 Получены данные из Web App от пользователя {message.from_user.id}")
-        print(f"📋 Данные: {message.web_app_data.data}")
         
         data = json.loads(message.web_app_data.data)
         user_id = message.from_user.id
         
+        print(f"📋 Действие: {data.get('action')}")
+        
         if data.get('action') == 'init':
             # Инициализация приложения
-            user = get_user(user_id)
-            inventory = get_inventory(user_id)
-            cases = get_cases()
+            print(f"🔧 Инициализация для пользователя {user_id}")
             
-            response = {
-                'success': True,
-                'user': {
-                    'balance': user['balance'],
-                    'experience': user['experience'],
-                    'level': user['level']
-                },
-                'inventory': inventory,
-                'cases': cases,
-                'config': {
-                    'min_bet': 10,
-                    'max_bet': 10000,
-                    'daily_bonus': 100,
-                    'version': '1.0.0'
-                }
+            response_data = get_user_data_for_webapp(user_id)
+            response_data['success'] = True
+            response_data['config'] = {
+                'min_bet': 10,
+                'max_bet': 10000,
+                'daily_bonus': 100,
+                'version': '1.0.0'
             }
             
-            print(f"📤 Отправка данных инициализации: {json.dumps(response)[:200]}...")
+            print(f"📤 Отправка данных инициализации")
             
-            # Отправляем ответ
-            await message.answer(
-                json.dumps(response),
-                parse_mode=None  # Важно: не использовать HTML разметку
+            await bot.send_message(
+                user_id,
+                json.dumps(response_data),
+                parse_mode=None
             )
-            print(f"📤 Отправлены данные инициализации пользователю {user_id}")
             
         elif data.get('action') == 'open_case':
             # Открытие кейса
@@ -769,8 +775,12 @@ async def handle_web_app_data(message: Message):
             if 'error' in result:
                 print(f"❌ Ошибка при открытии кейса: {result['error']}")
                 response = {'success': False, 'error': result['error']}
-                await message.answer(json.dumps(response), parse_mode=None)
+                await bot.send_message(user_id, json.dumps(response), parse_mode=None)
                 return
+            
+            # Получаем обновленные данные для веб-приложения
+            webapp_data = get_user_data_for_webapp(user_id)
+            result.update(webapp_data)
             
             # Отправляем уведомление для редких предметов
             if result['item']['rarity'] in ['epic', 'legendary']:
@@ -787,14 +797,13 @@ async def handle_web_app_data(message: Message):
                 await message.answer(notification, parse_mode=ParseMode.HTML)
                 print(f"🎉 Пользователь {user_id} получил редкий предмет: {result['item']['name']}")
             
-            # Получаем обновленный инвентарь
-            inventory = get_inventory(user_id)
-            result['inventory'] = inventory
+            print(f"📤 Отправка результата открытия")
             
-            print(f"📤 Отправка результата открытия: {json.dumps(result)[:200]}...")
-            
-            await message.answer(json.dumps(result), parse_mode=None)
-            print(f"📤 Отправлен результат открытия кейса пользователю {user_id}")
+            await bot.send_message(
+                user_id,
+                json.dumps(result),
+                parse_mode=None
+            )
             
         elif data.get('action') == 'sell_item':
             # Продажа предмета
@@ -810,7 +819,7 @@ async def handle_web_app_data(message: Message):
             
             if not item_data:
                 response = {'success': False, 'error': 'Предмет не найден'}
-                await message.answer(json.dumps(response), parse_mode=None)
+                await bot.send_message(user_id, json.dumps(response), parse_mode=None)
                 conn.close()
                 return
             
@@ -822,7 +831,7 @@ async def handle_web_app_data(message: Message):
             
             if cursor.rowcount == 0:
                 response = {'success': False, 'error': 'Предмет не найден в инвентаре'}
-                await message.answer(json.dumps(response), parse_mode=None)
+                await bot.send_message(user_id, json.dumps(response), parse_mode=None)
                 conn.close()
                 return
             
@@ -832,55 +841,49 @@ async def handle_web_app_data(message: Message):
                 user_id, sell_price, "reward", f"Продажа предмета: {item_name}"
             )
             
-            # Получаем обновленный инвентарь
-            inventory = get_inventory(user_id)
+            # Получаем обновленные данные для веб-приложения
+            webapp_data = get_user_data_for_webapp(user_id)
             
             response = {
                 'success': True,
                 'sell_price': sell_price,
-                'new_balance': new_balance,
-                'inventory': inventory
+                'new_balance': new_balance
             }
+            response.update(webapp_data)
             
-            print(f"📤 Отправка результата продажи: {json.dumps(response)[:200]}...")
+            print(f"📤 Отправка результата продажи")
             
-            await message.answer(json.dumps(response), parse_mode=None)
+            await bot.send_message(
+                user_id,
+                json.dumps(response),
+                parse_mode=None
+            )
             conn.commit()
             conn.close()
-            print(f"💰 Пользователь {user_id} продал предмет за {sell_price} 💎")
             
         elif data.get('action') == 'sync_data':
             # Синхронизация данных
-            user = get_user(user_id)
-            inventory = get_inventory(user_id)
-            cases = get_cases()
+            print(f"🔄 Синхронизация данных для пользователя {user_id}")
             
-            response = {
-                'success': True,
-                'user': {
-                    'balance': user['balance'],
-                    'experience': user['experience'],
-                    'level': user['level']
-                },
-                'inventory': inventory,
-                'cases': cases
-            }
+            webapp_data = get_user_data_for_webapp(user_id)
+            webapp_data['success'] = True
             
-            print(f"📤 Отправка данных синхронизации: {json.dumps(response)[:200]}...")
-            
-            await message.answer(json.dumps(response), parse_mode=None)
-            print(f"🔄 Синхронизированы данные пользователя {user_id}")
+            await bot.send_message(
+                user_id,
+                json.dumps(webapp_data),
+                parse_mode=None
+            )
             
         else:
             # Неизвестное действие
             response = {'success': False, 'error': 'Неизвестное действие'}
-            await message.answer(json.dumps(response), parse_mode=None)
+            await bot.send_message(user_id, json.dumps(response), parse_mode=None)
             print(f"❌ Неизвестное действие: {data.get('action')}")
             
     except json.JSONDecodeError as e:
         print(f"❌ Ошибка декодирования JSON: {e}")
         response = {'success': False, 'error': 'Неверный формат данных'}
-        await message.answer(json.dumps(response), parse_mode=None)
+        await bot.send_message(message.from_user.id, json.dumps(response), parse_mode=None)
     except Exception as e:
         print(f"❌ Ошибка обработки Web App данных: {e}")
         import traceback
@@ -892,7 +895,7 @@ async def handle_web_app_data(message: Message):
             error_msg = "Произошла ошибка. Пожалуйста, попробуйте позже."
         
         response = {'success': False, 'error': error_msg}
-        await message.answer(json.dumps(response), parse_mode=None)
+        await bot.send_message(message.from_user.id, json.dumps(response), parse_mode=None)
 
 @router.message()
 async def handle_unknown(message: Message):
