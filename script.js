@@ -31,9 +31,8 @@ if (tg) {
     tg.BackButton?.hide();
     console.log('Telegram Web App инициализирован');
     
-    // Показываем основную кнопку
-    tg.MainButton.text = "Открыть меню";
-    tg.MainButton.show();
+    // Скрываем основную кнопку в чате, оставляя управление внутри интерфейса
+    tg.MainButton.hide();
 }
 
 // Глобальные переменные
@@ -728,7 +727,7 @@ function prepareRouletteForCase(caseItem) {
         
         // Центрируем первый предмет
         const containerWidth = elements.rouletteContainer.clientWidth;
-        const itemWidth = 110;
+        const { itemWidth } = getRouletteMetrics();
         
         // Вычисляем позицию чтобы первый предмет был в центре
         const initialPosition = (containerWidth / 2) - (itemWidth / 2);
@@ -736,6 +735,27 @@ function prepareRouletteForCase(caseItem) {
         elements.itemsTrack.style.transform = `translateX(${initialPosition}px)`;
         elements.itemsTrack.style.transition = 'none';
     }, 50);
+}
+
+function getRouletteMetrics() {
+    const fallback = { itemWidth: 110, gap: 8 };
+    if (!elements.itemsTrack) {
+        return fallback;
+    }
+
+    const sampleItem = elements.itemsTrack.querySelector('.roulette-item');
+    if (!sampleItem) {
+        return fallback;
+    }
+
+    const itemRect = sampleItem.getBoundingClientRect();
+    const trackStyles = window.getComputedStyle(elements.itemsTrack);
+    const gapValue = parseFloat(trackStyles.columnGap || trackStyles.gap || '0');
+
+    return {
+        itemWidth: itemRect.width || fallback.itemWidth,
+        gap: Number.isFinite(gapValue) ? gapValue : fallback.gap
+    };
 }
 
 // Генерация начальной последовательности для рулетки
@@ -970,10 +990,11 @@ function startRouletteAnimationSequence(resolve) {
     }
     
     const containerWidth = rouletteContainer.clientWidth;
-    const itemWidth = 110;
+    const { itemWidth, gap } = getRouletteMetrics();
+    const step = itemWidth + gap;
     const startPosition = (containerWidth / 2) - (itemWidth / 2);
-    const targetItemCenter = winningItemIndex * itemWidth + itemWidth / 2;
-    const finalPosition = (containerWidth / 2) - targetItemCenter;
+    const targetItemCenter = winningItemIndex * step + itemWidth / 2;
+    const finalPosition = Math.round((containerWidth / 2) - targetItemCenter);
     
     // Устанавливаем начальную позицию
     if (elements.itemsTrack) {
@@ -984,7 +1005,7 @@ function startRouletteAnimationSequence(resolve) {
     // Даем браузеру время на отрисовку
     setTimeout(() => {
         animationStartTime = Date.now();
-        const animationDuration = 2000; // Уменьшаем до 2 секунд
+        const animationDuration = 2600;
         
         animateRoulette(startPosition, finalPosition, animationDuration, resolve);
     }, 50);
@@ -1000,16 +1021,7 @@ function animateRoulette(startPos, endPos, duration, resolve) {
     const elapsed = Date.now() - animationStartTime;
     let progress = Math.min(elapsed / duration, 1);
     
-    // Упрощенные фазы анимации для скорости
-    let easedProgress;
-    
-    if (progress < 0.3) {
-        easedProgress = easeOutSine(progress / 0.3) * 0.3;
-    } else if (progress < 0.7) {
-        easedProgress = 0.3 + (progress - 0.3) * 0.4;
-    } else {
-        easedProgress = 0.7 + easeOutCubic((progress - 0.7) / 0.3) * 0.3;
-    }
+    const easedProgress = easeOutCubic(progress);
     
     const currentPos = startPos + (endPos - startPos) * easedProgress;
     
@@ -1033,7 +1045,8 @@ function updateCenterZoneItem() {
     
     const containerRect = elements.rouletteContainer.getBoundingClientRect();
     const centerX = containerRect.left + containerRect.width / 2;
-    const zoneWidth = 60;
+    const { itemWidth } = getRouletteMetrics();
+    const zoneWidth = itemWidth * 0.6;
     
     const items = document.querySelectorAll('.roulette-item');
     let closestItem = null;
@@ -1061,6 +1074,16 @@ function updateCenterZoneItem() {
 function finishRouletteAnimation(resolve) {
     console.log('Завершение анимации рулетки');
     isScrolling = false;
+
+    const { itemWidth, gap } = getRouletteMetrics();
+    const step = itemWidth + gap;
+    const containerWidth = elements.rouletteContainer?.clientWidth || 0;
+    const targetItemCenter = winningItemIndex * step + itemWidth / 2;
+    const finalPosition = Math.round((containerWidth / 2) - targetItemCenter);
+    if (elements.itemsTrack) {
+        elements.itemsTrack.style.transform = `translateX(${finalPosition}px)`;
+    }
+    setHighlightedItemByIndex(winningItemIndex);
     
     setTimeout(() => {
         const highlightedItem = document.querySelector('.roulette-item.highlighted');
@@ -1074,6 +1097,13 @@ function finishRouletteAnimation(resolve) {
             resolve();
         }, 800); // Уменьшаем задержку
     }, 300);
+}
+
+function setHighlightedItemByIndex(index) {
+    const items = document.querySelectorAll('.roulette-item');
+    items.forEach((item, itemIndex) => {
+        item.classList.toggle('highlighted', itemIndex === index);
+    });
 }
 
 // Показ результата
