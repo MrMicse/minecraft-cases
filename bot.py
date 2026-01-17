@@ -15,7 +15,6 @@ from aiogram.types import (
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from aiogram.methods import EditMessageText
 
 # Загрузка переменных окружения из .env файла
 load_dotenv()
@@ -24,7 +23,7 @@ load_dotenv()
 BOT_TOKEN = os.getenv('BOT_TOKEN')
 ADMIN_ID = int(os.getenv('ADMIN_ID', 0))
 DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
-DB_PATH = os.getenv('DATABASE_URL', 'minecraft_cases.db')
+DB_PATH = os.getenv('DATABASE_URL', 'sqlite:///minecraft_cases.db').replace('sqlite:///', '')
 
 # Проверка наличия обязательных переменных
 if not BOT_TOKEN:
@@ -35,28 +34,23 @@ dp = Dispatcher()
 router = Router()
 dp.include_router(router)
 
-# Хранилище для состояний пользователей (упрощенная версия)
-user_states = {}
-
 def init_db():
     """Инициализация базы данных"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # Таблица пользователей - ОБНОВЛЕНА для синхронизации с Web App
+    # Таблица пользователей
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY,
         username TEXT,
         first_name TEXT,
         last_name TEXT,
-        balance INTEGER DEFAULT 10000,  -- Кристаллы пользователя
-        experience INTEGER DEFAULT 0,    -- Опыт пользователя
-        level INTEGER DEFAULT 1,         -- Уровень пользователя
-        diamonds INTEGER DEFAULT 10000,  -- Отдельное поле для алмазов/кристаллов
+        balance INTEGER DEFAULT 10000,
+        experience INTEGER DEFAULT 0,
+        level INTEGER DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        last_login TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        webapp_data TEXT DEFAULT '{}'    -- JSON для хранения данных из Web App
+        last_login TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     ''')
     
@@ -124,7 +118,7 @@ def init_db():
     CREATE TABLE IF NOT EXISTS transactions (
         transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
-        type TEXT NOT NULL CHECK(type IN ('deposit', 'withdraw', 'purchase', 'reward', 'webapp_spend')),
+        type TEXT NOT NULL CHECK(type IN ('deposit', 'withdraw', 'purchase', 'reward')),
         amount INTEGER NOT NULL,
         description TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -226,7 +220,7 @@ def get_user(user_id: int) -> Dict:
     cursor = conn.cursor()
     
     cursor.execute(
-        """SELECT user_id, username, first_name, last_name, balance, experience, level, diamonds 
+        """SELECT user_id, username, first_name, last_name, balance, experience, level 
            FROM users WHERE user_id = ?""",
         (user_id,)
     )
@@ -234,8 +228,8 @@ def get_user(user_id: int) -> Dict:
     user_data = cursor.fetchone()
     if not user_data:
         cursor.execute(
-            """INSERT INTO users (user_id, balance, experience, level, diamonds, last_login) 
-               VALUES (?, 10000, 0, 1, 10000, CURRENT_TIMESTAMP)""",
+            """INSERT INTO users (user_id, balance, experience, level, last_login) 
+               VALUES (?, 10000, 0, 1, CURRENT_TIMESTAMP)""",
             (user_id,)
         )
         conn.commit()
@@ -249,7 +243,7 @@ def get_user(user_id: int) -> Dict:
         conn.commit()
         
         cursor.execute(
-            """SELECT user_id, username, first_name, last_name, balance, experience, level, diamonds 
+            """SELECT user_id, username, first_name, last_name, balance, experience, level 
                FROM users WHERE user_id = ?""",
             (user_id,)
         )
@@ -262,62 +256,16 @@ def get_user(user_id: int) -> Dict:
         "username": user_data[1],
         "first_name": user_data[2],
         "last_name": user_data[3],
-        "balance": user_data[4],  # Общий баланс
+        "balance": user_data[4],
         "experience": user_data[5],
-        "level": user_data[6],
-        "diamonds": user_data[7]  # Алмазы/кристаллы
+        "level": user_data[6]
     }
 
-def update_balance(user_id: int, amount: int, transaction_type: str, description: str = "") -> Dict:
-    """Обновление баланса пользователя - возвращает обновленные данные"""
+def update_balance(user_id: int, amount: int, transaction_type: str, description: str = "") -> int:
+    """Обновление баланса пользователя"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # Обновляем баланс (для совместимости со старым кодом)
-    cursor.execute(
-        "UPDATE users SET balance = balance + ? WHERE user_id = ?",
-        (amount, user_id)
-    )
-    
-    # Также обновляем diamonds для синхронизации с Web App
-    cursor.execute(
-        "UPDATE users SET diamonds = diamonds + ? WHERE user_id = ?",
-        (amount, user_id)
-    )
-    
-    cursor.execute(
-        """INSERT INTO transactions (user_id, type, amount, description) 
-           VALUES (?, ?, ?, ?)""",
-        (user_id, transaction_type, amount, description)
-    )
-    
-    # Получаем обновленные данные
-    cursor.execute(
-        """SELECT balance, diamonds FROM users WHERE user_id = ?""",
-        (user_id,)
-    )
-    new_balance, new_diamonds = cursor.fetchone()
-    
-    conn.commit()
-    conn.close()
-    
-    return {
-        "balance": new_balance,
-        "diamonds": new_diamonds
-    }
-
-def update_diamonds(user_id: int, amount: int, transaction_type: str, description: str = "") -> Dict:
-    """Обновление алмазов пользователя"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    # Обновляем diamonds
-    cursor.execute(
-        "UPDATE users SET diamonds = diamonds + ? WHERE user_id = ?",
-        (amount, user_id)
-    )
-    
-    # Также синхронизируем balance
     cursor.execute(
         "UPDATE users SET balance = balance + ? WHERE user_id = ?",
         (amount, user_id)
@@ -329,20 +277,13 @@ def update_diamonds(user_id: int, amount: int, transaction_type: str, descriptio
         (user_id, transaction_type, amount, description)
     )
     
-    # Получаем обновленные данные
-    cursor.execute(
-        """SELECT balance, diamonds FROM users WHERE user_id = ?""",
-        (user_id,)
-    )
-    new_balance, new_diamonds = cursor.fetchone()
+    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+    new_balance = cursor.fetchone()[0]
     
     conn.commit()
     conn.close()
     
-    return {
-        "balance": new_balance,
-        "diamonds": new_diamonds
-    }
+    return new_balance
 
 def get_inventory(user_id: int) -> List[Dict]:
     """Получение инвентаря пользователя"""
@@ -455,26 +396,20 @@ def open_case(user_id: int, case_id: int) -> Dict:
         "texture_url": item_data[6]
     }
     
-    # Проверяем баланс (используем diamonds для Web App)
-    cursor.execute("SELECT diamonds FROM users WHERE user_id = ?", (user_id,))
-    diamonds_result = cursor.fetchone()
-    if not diamonds_result:
+    # Проверяем баланс
+    cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+    balance_result = cursor.fetchone()
+    if not balance_result:
         conn.close()
         return {"error": "Пользователь не найден"}
     
-    diamonds = diamonds_result[0]
+    balance = balance_result[0]
     
-    if diamonds < case_price:
+    if balance < case_price:
         conn.close()
-        return {"error": "Недостаточно алмазов"}
+        return {"error": "Недостаточно средств"}
     
-    # Списание алмазов
-    cursor.execute(
-        "UPDATE users SET diamonds = diamonds - ? WHERE user_id = ?",
-        (case_price, user_id)
-    )
-    
-    # Также обновляем balance для совместимости
+    # Списание средств
     cursor.execute(
         "UPDATE users SET balance = balance - ? WHERE user_id = ?",
         (case_price, user_id)
@@ -482,8 +417,8 @@ def open_case(user_id: int, case_id: int) -> Dict:
     
     cursor.execute(
         """INSERT INTO transactions (user_id, type, amount, description) 
-           VALUES (?, 'webapp_spend', ?, ?)""",
-        (user_id, -case_price, f"Открытие кейса в Web App: {case_name}")
+           VALUES (?, 'purchase', ?, ?)""",
+        (user_id, -case_price, f"Покупка кейса: {case_name}")
     )
     
     # Добавляем предмет в инвентарь
@@ -530,7 +465,7 @@ def open_case(user_id: int, case_id: int) -> Dict:
     
     # Получаем обновленные данные пользователя
     cursor.execute(
-        "SELECT balance, diamonds, experience, level FROM users WHERE user_id = ?",
+        "SELECT balance, experience, level FROM users WHERE user_id = ?",
         (user_id,)
     )
     updated_user = cursor.fetchone()
@@ -541,13 +476,12 @@ def open_case(user_id: int, case_id: int) -> Dict:
     return {
         "success": True,
         "item": item,
-        "diamonds": updated_user[1],  # Обновленные алмазы
-        "new_balance": updated_user[1],  # Для совместимости с Web App
+        "new_balance": updated_user[0],
         "experience_gained": experience_gained,
         "case_price": case_price,
         "inventory_id": inventory_id,
-        "experience": updated_user[2],
-        "level": updated_user[3]
+        "experience": updated_user[1],
+        "level": updated_user[2]
     }
 
 def get_user_data_for_webapp(user_id: int) -> Dict:
@@ -558,381 +492,13 @@ def get_user_data_for_webapp(user_id: int) -> Dict:
     
     return {
         "user": {
-            "balance": user["diamonds"],  # Используем diamonds для Web App
+            "balance": user["balance"],
             "experience": user["experience"],
             "level": user["level"]
         },
         "inventory": inventory,
         "cases": cases
     }
-
-async def show_main_menu(chat_id, message_id=None):
-    """Отображение главного меню"""
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="🚀 Запустить игру",
-                    web_app=WebAppInfo(url="https://mrmicse.github.io/minecraft-cases/")
-                )
-            ],
-            [
-                InlineKeyboardButton(text="👤 Профиль", callback_data="profile"),
-                InlineKeyboardButton(text="📦 Инвентарь", callback_data="inventory")
-            ],
-            [
-                InlineKeyboardButton(text="💰 Баланс", callback_data="balance_menu"),
-                InlineKeyboardButton(text="❓ Помощь", callback_data="help")
-            ]
-        ]
-    )
-    
-    text = """
-<b>Minecraft Case Opening</b>
-
-Добро пожаловать в игру открытия кейсов в стиле Minecraft! Открывайте кейсы, собирайте редкие предметы и улучшайте свою коллекцию.
-
-Нажмите <b>«Запустить игру»</b> чтобы начать.
-    """
-    
-    if message_id:
-        await bot.edit_message_text(
-            chat_id=chat_id,
-            message_id=message_id,
-            text=text,
-            reply_markup=keyboard,
-            parse_mode=ParseMode.HTML
-        )
-    else:
-        await bot.send_message(
-            chat_id=chat_id,
-            text=text,
-            reply_markup=keyboard,
-            parse_mode=ParseMode.HTML
-        )
-
-async def show_profile(chat_id, message_id, user_id):
-    """Отображение профиля"""
-    user = get_user(user_id)
-    inventory = get_inventory(user_id)
-    
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="💎 Пополнить баланс", callback_data="add_diamonds"),
-                InlineKeyboardButton(text="💰 Транзакции", callback_data="transactions")
-            ],
-            [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_main")]
-        ]
-    )
-    
-    text = f"""
-<b>👤 Профиль игрока</b>
-
-<b>ID:</b> {user['user_id']}
-<b>Алмазы (Кристаллы):</b> {user['diamonds']} 💎
-<b>Общий баланс:</b> {user['balance']} 💰
-<b>Уровень:</b> {user['level']}
-<b>Опыт:</b> {user['experience']} XP
-
-<b>📦 Инвентарь:</b> {len(inventory)} предметов
-<b>📊 Общая стоимость:</b> {sum(item['price'] for item in inventory)} 💎
-    """
-    
-    await bot.edit_message_text(
-        chat_id=chat_id,
-        message_id=message_id,
-        text=text,
-        reply_markup=keyboard,
-        parse_mode=ParseMode.HTML
-    )
-
-async def show_balance_menu(chat_id, message_id, user_id):
-    """Меню управления балансом"""
-    user = get_user(user_id)
-    
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(text="💎 +100", callback_data="add_100"),
-                InlineKeyboardButton(text="💎 +500", callback_data="add_500")
-            ],
-            [
-                InlineKeyboardButton(text="💎 +1000", callback_data="add_1000"),
-                InlineKeyboardButton(text="💎 +5000", callback_data="add_5000")
-            ],
-            [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_main")]
-        ]
-    )
-    
-    text = f"""
-<b>💰 Управление балансом</b>
-
-Текущий баланс: {user['diamonds']} 💎
-
-Выберите количество алмазов для пополнения:
-
-<code>💎 100  алмазов</code>
-<code>💎 500  алмазов</code>  
-<code>💎 1000 алмазов</code>
-<code>💎 5000 алмазов</code>
-
-<i>Примечание: Алмазы синхронизируются с игровым приложением.</i>
-    """
-    
-    await bot.edit_message_text(
-        chat_id=chat_id,
-        message_id=message_id,
-        text=text,
-        reply_markup=keyboard,
-        parse_mode=ParseMode.HTML
-    )
-
-async def show_transactions(chat_id, message_id, user_id):
-    """История транзакций"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    cursor.execute(
-        """SELECT type, amount, description, created_at 
-           FROM transactions 
-           WHERE user_id = ? 
-           ORDER BY created_at DESC 
-           LIMIT 10""",
-        (user_id,)
-    )
-    
-    transactions = cursor.fetchall()
-    conn.close()
-    
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="◀️ Назад", callback_data="profile")]
-        ]
-    )
-    
-    if not transactions:
-        text = """
-<b>📊 История транзакций</b>
-
-У вас еще нет транзакций.
-        """
-    else:
-        transaction_text = ""
-        for trans in transactions:
-            trans_type, amount, description, created_at = trans
-            
-            # Форматируем дату
-            created_date = datetime.strptime(created_at, "%Y-%m-%d %H:%M:%S")
-            formatted_date = created_date.strftime("%d.%m.%Y %H:%M")
-            
-            # Определяем символ для типа транзакции
-            if amount > 0:
-                symbol = "📈"
-            else:
-                symbol = "📉"
-                amount = abs(amount)
-            
-            transaction_text += f"\n{symbol} <b>{amount} 💎</b> - {description}"
-            transaction_text += f"\n<code>{formatted_date}</code>\n"
-        
-        text = f"""
-<b>📊 История транзакций</b>
-
-Последние 10 операций:
-{transaction_text}
-        """
-    
-    await bot.edit_message_text(
-        chat_id=chat_id,
-        message_id=message_id,
-        text=text,
-        reply_markup=keyboard,
-        parse_mode=ParseMode.HTML
-    )
-
-async def show_inventory(chat_id, message_id, user_id):
-    """Отображение инвентаря"""
-    inventory = get_inventory(user_id)
-    user = get_user(user_id)
-    
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_main")]
-        ]
-    )
-    
-    if not inventory:
-        text = f"""
-<b>📦 Ваш инвентарь</b>
-
-Алмазы: {user['diamonds']} 💎
-
-Ваш инвентарь пуст. Откройте кейсы в игре чтобы получить предметы!
-        """
-    else:
-        # Группируем предметы по редкости
-        items_by_rarity = {}
-        total_value = 0
-        
-        for item in inventory:
-            rarity = item['rarity']
-            if rarity not in items_by_rarity:
-                items_by_rarity[rarity] = []
-            items_by_rarity[rarity].append(item)
-            total_value += item['price']
-        
-        rarity_text = {
-            'common': 'Обычные',
-            'uncommon': 'Необычные',
-            'rare': 'Редкие',
-            'epic': 'Эпические',
-            'legendary': 'Легендарные'
-        }
-        
-        inventory_text = ""
-        for rarity in ['legendary', 'epic', 'rare', 'uncommon', 'common']:
-            if rarity in items_by_rarity:
-                inventory_text += f"\n<b>{rarity_text[rarity]}:</b> {len(items_by_rarity[rarity])} предметов"
-        
-        text = f"""
-<b>📦 Ваш инвентарь</b>
-
-Алмазы: {user['diamonds']} 💎
-Всего предметов: {len(inventory)}
-Общая стоимость: {total_value} 💎
-
-<b>По редкости:</b>{inventory_text}
-
-<i>Для просмотра и управления предметами используйте игровое приложение.</i>
-        """
-    
-    await bot.edit_message_text(
-        chat_id=chat_id,
-        message_id=message_id,
-        text=text,
-        reply_markup=keyboard,
-        parse_mode=ParseMode.HTML
-    )
-
-async def show_stats(chat_id, message_id, user_id):
-    """Отображение статистики"""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    
-    # Получаем статистику открытий
-    cursor.execute(
-        "SELECT COUNT(*) FROM opening_history WHERE user_id = ?",
-        (user_id,)
-    )
-    cases_opened = cursor.fetchone()[0]
-    
-    # Получаем сумму потраченных алмазов
-    cursor.execute(
-        """SELECT SUM(amount) FROM transactions 
-           WHERE user_id = ? AND type IN ('purchase', 'webapp_spend')""",
-        (user_id,)
-    )
-    spent_result = cursor.fetchone()
-    diamonds_spent = abs(spent_result[0]) if spent_result[0] else 0
-    
-    # Получаем самый редкий предмет
-    cursor.execute('''
-    SELECT i.name, i.rarity, i.price, COUNT(*) as count 
-    FROM inventory inv 
-    JOIN items i ON inv.item_id = i.item_id 
-    WHERE inv.user_id = ? 
-    GROUP BY i.item_id 
-    ORDER BY i.price DESC 
-    LIMIT 1
-    ''', (user_id,))
-    
-    top_item = cursor.fetchone()
-    
-    conn.close()
-    
-    user = get_user(user_id)
-    
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_main")]
-        ]
-    )
-    
-    rarity_text = {
-        'common': 'Обычный',
-        'uncommon': 'Необычный',
-        'rare': 'Редкий',
-        'epic': 'Эпический',
-        'legendary': 'Легендарный'
-    }
-    
-    top_item_text = "Нет предметов"
-    if top_item:
-        top_item_text = f"{top_item[0]} ({rarity_text[top_item[1]]}) - {top_item[2]} 💎"
-    
-    text = f"""
-<b>📊 Статистика игрока</b>
-
-<b>Общая статистика:</b>
-• Открыто кейсов: {cases_opened}
-• Потрачено алмазов: {diamonds_spent} 💎
-• Текущие алмазы: {user['diamonds']} 💎
-• Уровень: {user['level']}
-• Опыт: {user['experience']} XP
-
-<b>Лучший предмет:</b>
-{top_item_text}
-
-<i>Продолжайте открывать кейсы для улучшения статистики!</i>
-    """
-    
-    await bot.edit_message_text(
-        chat_id=chat_id,
-        message_id=message_id,
-        text=text,
-        reply_markup=keyboard,
-        parse_mode=ParseMode.HTML
-    )
-
-async def show_help(chat_id, message_id):
-    """Отображение помощи"""
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="◀️ Назад", callback_data="back_to_main")]
-        ]
-    )
-    
-    text = """
-<b>❓ Помощь</b>
-
-<b>Как играть:</b>
-1. Нажмите «Запустить игру» чтобы открыть игровое приложение
-2. Выберите кейс для открытия
-3. Используйте алмазы для открытия кейсов
-4. Полученные предметы сохраняются в инвентаре
-5. Продавайте ненужные предметы или собирайте коллекцию
-
-<b>Важно!</b> Алмазы (💎) синхронизируются между ботом и игровым приложением.
-
-<b>Команды:</b>
-/start - Главное меню
-/balance - Проверить баланс
-/add_diamonds - Пополнить алмазы
-
-<b>Связь с поддержкой:</b>
-Если возникли проблемы с игрой, обратитесь к администратору.
-
-<i>Удачи в игре!</i>
-    """
-    
-    await bot.edit_message_text(
-        chat_id=chat_id,
-        message_id=message_id,
-        text=text,
-        reply_markup=keyboard,
-        parse_mode=ParseMode.HTML
-    )
 
 # Обработчики команд
 @router.message(Command("start"))
@@ -952,109 +518,72 @@ async def cmd_start(message: Message):
     conn.commit()
     conn.close()
     
-    user_states[message.from_user.id] = {
-        'state': 'main_menu',
-        'message_id': None
-    }
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⛏️ Открыть Minecraft Кейсы",
+                    web_app=WebAppInfo(url="https://mrmicse.github.io/minecraft-cases/")
+                )
+            ],
+            [
+                InlineKeyboardButton(text="👤 Профиль", callback_data="profile"),
+                InlineKeyboardButton(text="🎒 Инвентарь", callback_data="inventory")
+            ],
+            [
+                InlineKeyboardButton(text="💰 Пополнить баланс", callback_data="deposit"),
+                InlineKeyboardButton(text="🔄 Обменять предметы", callback_data="trade")
+            ]
+        ]
+    )
     
-    await show_main_menu(message.chat.id)
+    # Получаем статистику открытий
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT COUNT(*) FROM opening_history WHERE user_id = ?",
+        (user["user_id"],)
+    )
+    cases_opened = cursor.fetchone()[0]
+    conn.close()
+    
+    text = f"""
+⛏️ <b>Добро пожаловать в Minecraft Case Opening, {message.from_user.first_name}!</b>
+
+💰 <b>Баланс:</b> {user['balance']} 💎
+🎮 <b>Уровень:</b> {user['level']}
+⭐ <b>Опыт:</b> {user['experience']} XP
+
+🎁 <b>Ежедневный бонус:</b> 100 💎 (/daily)
+🏆 <b>Открыто кейсов:</b> {cases_opened} (/stats)
+
+<code>Нажмите кнопку ниже чтобы открыть веб-приложение!</code>
+    """
+    
+    await message.answer(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+    print(f"📤 Отправлен ответ пользователю {message.from_user.id}")
 
 @router.message(Command("balance"))
 async def cmd_balance(message: Message):
     """Проверка баланса"""
+    print(f"📥 Получена команда /balance от пользователя {message.from_user.id}")
+    
     user = get_user(message.from_user.id)
     inventory = get_inventory(user["user_id"])
     
     text = f"""
-<b>💰 Баланс аккаунта</b>
+💰 <b>Статистика аккаунта</b>
 
-Алмазы: {user['diamonds']} 💎
-Общий баланс: {user['balance']} 💰
-Предметов в инвентаре: {len(inventory)}
-Общая стоимость: {sum(item['price'] for item in inventory)} 💎
-
-<i>Алмазы синхронизируются с игровым приложением.</i>
+👤 <b>Игрок:</b> {message.from_user.first_name}
+💎 <b>Баланс:</b> {user['balance']}
+🎮 <b>Уровень:</b> {user['level']}
+⭐ <b>Опыт:</b> {user['experience']} / {user['level'] * 1000}
+📦 <b>Предметов в инвентаре:</b> {len(inventory)}
+📊 <b>Общая стоимость:</b> {sum(item['price'] for item in inventory)} 💎
     """
     
     await message.answer(text, parse_mode=ParseMode.HTML)
-
-@router.message(Command("add_diamonds"))
-async def cmd_add_diamonds(message: Message):
-    """Пополнение алмазов"""
-    await show_balance_menu(message.chat.id, None, message.from_user.id)
-
-@router.callback_query(F.data == "back_to_main")
-async def callback_back_to_main(callback: CallbackQuery):
-    """Обработка кнопки назад"""
-    await callback.answer()
-    await show_main_menu(callback.message.chat.id, callback.message.message_id)
-
-@router.callback_query(F.data == "profile")
-async def callback_profile(callback: CallbackQuery):
-    """Обработка кнопки профиля"""
-    await callback.answer()
-    await show_profile(callback.message.chat.id, callback.message.message_id, callback.from_user.id)
-
-@router.callback_query(F.data == "balance_menu")
-async def callback_balance_menu(callback: CallbackQuery):
-    """Обработка кнопки баланса"""
-    await callback.answer()
-    await show_balance_menu(callback.message.chat.id, callback.message.message_id, callback.from_user.id)
-
-@router.callback_query(F.data == "transactions")
-async def callback_transactions(callback: CallbackQuery):
-    """Обработка кнопки транзакций"""
-    await callback.answer()
-    await show_transactions(callback.message.chat.id, callback.message.message_id, callback.from_user.id)
-
-@router.callback_query(F.data == "inventory")
-async def callback_inventory(callback: CallbackQuery):
-    """Обработка кнопки инвентаря"""
-    await callback.answer()
-    await show_inventory(callback.message.chat.id, callback.message.message_id, callback.from_user.id)
-
-@router.callback_query(F.data == "stats")
-async def callback_stats(callback: CallbackQuery):
-    """Обработка кнопки статистики"""
-    await callback.answer()
-    await show_stats(callback.message.chat.id, callback.message.message_id, callback.from_user.id)
-
-@router.callback_query(F.data == "help")
-async def callback_help(callback: CallbackQuery):
-    """Обработка кнопки помощи"""
-    await callback.answer()
-    await show_help(callback.message.chat.id, callback.message.message_id)
-
-# Обработчики пополнения баланса
-@router.callback_query(F.data.startswith("add_"))
-async def callback_add_diamonds(callback: CallbackQuery):
-    """Обработка пополнения алмазов"""
-    amount_map = {
-        "add_100": 100,
-        "add_500": 500,
-        "add_1000": 1000,
-        "add_5000": 5000
-    }
-    
-    amount = amount_map.get(callback.data)
-    if not amount:
-        await callback.answer("Неизвестная сумма")
-        return
-    
-    user_id = callback.from_user.id
-    
-    # Пополняем алмазы
-    updated_data = update_diamonds(
-        user_id=user_id,
-        amount=amount,
-        transaction_type="reward",
-        description=f"Пополнение алмазов +{amount} 💎"
-    )
-    
-    await callback.answer(f"✅ Пополнено +{amount} алмазов!")
-    
-    # Показываем обновленный профиль
-    await show_profile(callback.message.chat.id, callback.message.message_id, user_id)
+    print(f"📤 Отправлена статистика пользователю {message.from_user.id}")
 
 @router.message(F.web_app_data)
 async def handle_web_app_data(message: Message):
@@ -1066,7 +595,7 @@ async def handle_web_app_data(message: Message):
         user_id = message.from_user.id
         action = data.get('action')
         
-        print(f"📋 Действие: {action}, Данные: {data}")
+        print(f"📋 Действие: {action}")
         
         # БЫСТРЫЙ ОТВЕТ НА ВСЕ ЗАПРОСЫ
         if action == 'init' or action == 'sync_data':
@@ -1085,7 +614,7 @@ async def handle_web_app_data(message: Message):
                 json.dumps(webapp_data),
                 parse_mode=None
             )
-            print(f"📤 Отправлен ответ на {action}. Алмазы: {webapp_data['user']['balance']}")
+            print(f"📤 Отправлен ответ на {action}")
             
         elif action == 'open_case':
             # Открытие кейса - УПРОЩЕННЫЙ ПРОЦЕСС
@@ -1107,7 +636,7 @@ async def handle_web_app_data(message: Message):
             
             # Отправляем результат НЕМЕДЛЕННО
             await message.answer(json.dumps(result), parse_mode=None)
-            print(f"📤 Отправлен результат открытия кейса. Новый баланс: {result['diamonds']} 💎")
+            print(f"📤 Отправлен результат открытия кейса")
             
         elif action == 'sell_item':
             # Продажа предмета - БЫСТРАЯ ОБРАБОТКА
@@ -1139,14 +668,8 @@ async def handle_web_app_data(message: Message):
                 conn.close()
                 return
             
-            # Добавляем деньги (используем алмазы)
+            # Добавляем деньги
             sell_price, item_name = item_data
-            cursor.execute(
-                "UPDATE users SET diamonds = diamonds + ? WHERE user_id = ?",
-                (sell_price, user_id)
-            )
-            
-            # Также обновляем balance
             cursor.execute(
                 "UPDATE users SET balance = balance + ? WHERE user_id = ?",
                 (sell_price, user_id)
@@ -1155,12 +678,12 @@ async def handle_web_app_data(message: Message):
             cursor.execute(
                 """INSERT INTO transactions (user_id, type, amount, description) 
                    VALUES (?, 'reward', ?, ?)""",
-                (user_id, sell_price, f"Продажа предмета в Web App: {item_name}")
+                (user_id, sell_price, f"Продажа предмета: {item_name}")
             )
             
-            # Получаем новые данные
-            cursor.execute("SELECT diamonds FROM users WHERE user_id = ?", (user_id,))
-            new_diamonds = cursor.fetchone()[0]
+            # Получаем новый баланс
+            cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+            new_balance = cursor.fetchone()[0]
             
             # Получаем обновленные данные
             webapp_data = get_user_data_for_webapp(user_id)
@@ -1168,15 +691,13 @@ async def handle_web_app_data(message: Message):
             response = {
                 'success': True,
                 'sell_price': sell_price,
-                'new_balance': new_diamonds,  # Используем diamonds как баланс
-                'diamonds': new_diamonds
+                'new_balance': new_balance
             }
             response.update(webapp_data)
             
             await message.answer(json.dumps(response), parse_mode=None)
             conn.commit()
             conn.close()
-            print(f"📤 Предмет продан. Новые алмазы: {new_diamonds} 💎")
             
         else:
             # Неизвестное действие
@@ -1204,10 +725,8 @@ async def handle_web_app_data(message: Message):
 @router.message()
 async def handle_unknown(message: Message):
     """Обработка неизвестных сообщений"""
-    await message.answer(
-        "Для начала работы используйте команду /start",
-        parse_mode=ParseMode.HTML
-    )
+    print(f"❓ Получено неизвестное сообщение от {message.from_user.id}: {message.text}")
+    await message.answer("🤔 Не понимаю вашу команду. Используйте /help для списка команд.")
 
 async def main():
     """Основная функция запуска бота"""
