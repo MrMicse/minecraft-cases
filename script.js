@@ -1,10 +1,15 @@
 // Cloudflare Tunnel API endpoint
-const API_BASE = 'https://operate-tulsa-script-mortality.trycloudflare.com';
+// Cloudflare Tunnel public HTTPS URL.
+// IMPORTANT: Quick Tunnel URL changes after every restart.
+// You can update it here OR pass ?api=https://NEW.trycloudflare.com in the WebApp URL.
+const API_BASE = (new URLSearchParams(location.search).get('api')
+    || localStorage.getItem('API_BASE')
+    || 'https://apparel-drives-possibly-campaign.trycloudflare.com').replace(/\/+$/, '');
 
 
 // ====== LocalStorage cache busting (forces reset for all users after update) ======
 const APP_STORAGE_KEY = 'minecraftCaseData';
-const APP_STORAGE_VERSION = 2; // increment to reset cached client-side data
+const APP_STORAGE_VERSION = 3; // increment to reset cached client-side data (forces reset for everyone)
 
 function ensureStorageVersion() {
     try {
@@ -53,6 +58,11 @@ let winningItemIndex = 0;
 let animationStartTime = 0;
 let isRouletteActive = false;
 let animationPhase = 0;
+
+// Helper: accept both camelCase and snake_case from backend
+function getCaseRarityWeights(caseItem) {
+    return caseItem?.rarityWeights || caseItem?.rarity_weights || {};
+}
 
 // DOM элементы
 const elements = {
@@ -566,7 +576,7 @@ function getPreviewItems(caseItem) {
     const allItems = [];
     
     // Собираем все возможные предметы для этого кейса
-    for (const [rarity, weight] of Object.entries(caseItem.rarityWeights)) {
+    for (const [rarity, weight] of Object.entries(getCaseRarityWeights(caseItem))) {
         if (weight > 0) {
             const items = minecraftItems[rarity] || [];
             allItems.push(...items);
@@ -670,7 +680,7 @@ function createCaseItemsPreview(caseItem) {
     
     // Собираем все предметы для этого кейса
     const allItems = [];
-    for (const [rarity, weight] of Object.entries(caseItem.rarityWeights)) {
+    for (const [rarity, weight] of Object.entries(getCaseRarityWeights(caseItem))) {
         if (weight > 0 && minecraftItems[rarity]) {
             const items = minecraftItems[rarity].map(item => ({
                 ...item,
@@ -735,7 +745,7 @@ function generateInitialRouletteSequence(caseItem) {
     
     // Собираем все возможные предметы для этого кейса
     const allItems = [];
-    for (const [rarity, weight] of Object.entries(caseItem.rarityWeights)) {
+    for (const [rarity, weight] of Object.entries(getCaseRarityWeights(caseItem))) {
         if (weight > 0 && minecraftItems[rarity]) {
             const items = minecraftItems[rarity];
             allItems.push(...items.map(item => ({
@@ -863,11 +873,12 @@ async function openCase() {
 
 // Генерация выигрышного предмета
 function generateWonItem(caseItem) {
-    const totalWeight = Object.values(caseItem.rarityWeights).reduce((a, b) => a + b, 0);
+    const weights = getCaseRarityWeights(caseItem);
+    const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0);
     let randomWeight = Math.random() * totalWeight;
     
     let selectedRarity = 'common';
-    for (const [rarity, weight] of Object.entries(caseItem.rarityWeights)) {
+    for (const [rarity, weight] of Object.entries(getCaseRarityWeights(caseItem))) {
         randomWeight -= weight;
         if (randomWeight <= 0) {
             selectedRarity = rarity;

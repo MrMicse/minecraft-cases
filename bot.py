@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from aiohttp import web
 import hmac
 import hashlib
+from urllib.parse import parse_qsl
 
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import (
@@ -55,8 +56,9 @@ def verify_telegram_webapp_init_data(init_data: str) -> Dict:
         raise ValueError("Нет initData")
 
     # init_data выглядит как querystring: a=b&c=d&hash=...
-    pairs = [p.split("=", 1) for p in init_data.split("&") if "=" in p]
-    data = {k: v for k, v in pairs}
+    # ВАЖНО: значения в initData URL-encoded, Telegram ожидает проверку по DECODED значениям.
+    # Поэтому используем parse_qsl (оно корректно декодирует %XX и '+').
+    data = dict(parse_qsl(init_data, keep_blank_values=True))
 
     received_hash = data.pop("hash", None)
     if not received_hash:
@@ -407,6 +409,8 @@ def get_cases() -> List[Dict]:
         "SELECT case_id, name, price, icon, description, rarity_weights, texture_url FROM cases WHERE is_active = TRUE"
     )
     
+    # IMPORTANT: Frontend expects camelCase key `rarityWeights`.
+    # We still read the DB column `rarity_weights` (snake_case JSON) and map it.
     cases = []
     for row in cursor.fetchall():
         cases.append({
@@ -415,7 +419,7 @@ def get_cases() -> List[Dict]:
             "price": row[2],
             "icon": row[3],
             "description": row[4],
-            "rarity_weights": json.loads(row[5]),
+            "rarityWeights": json.loads(row[5]),
             "texture_url": row[6]
         })
     
