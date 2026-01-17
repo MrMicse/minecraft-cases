@@ -502,7 +502,7 @@ def open_case(user_id: int, case_id: int) -> Dict:
         "level": updated_user[2],
         "cases_opened": updated_user[3]
     }
-}
+
 
 def get_user_full_data(user_id: int) -> Dict:
     """Получение полных данных пользователя для веб-приложения"""
@@ -520,7 +520,7 @@ def get_user_full_data(user_id: int) -> Dict:
         "inventory": inventory,
         "cases": cases
     }
-}
+
 
 # Создаем клавиатуру для основного меню с кнопкой веб-приложения
 def create_main_keyboard():
