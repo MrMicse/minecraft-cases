@@ -22,8 +22,6 @@ async def create_pool() -> asyncpg.Pool:
     
     print(f"🔗 Подключение к: {url.split('@')[1] if '@' in url else url}")
     
-    # Railway требует SSL, но через proxy может работать и без него
-    # Пробуем разные варианты подключения
     connection_params = {
         'dsn': url,
         'min_size': 1,
@@ -275,44 +273,59 @@ async def upsert_user(
     username: Optional[str],
     first_name: Optional[str],
     last_name: Optional[str],
-    starting_balance: int = 10000,
+    starting_balance: Optional[int] = None,
 ) -> Dict[str, Any]:
     async with pool.acquire() as conn:
         try:
-            row = await conn.fetchrow(
-                """
-                INSERT INTO users (user_id, username, first_name, last_name, balance, experience, level, last_login)
-                VALUES ($1,$2,$3,$4,$5,0,1,NOW())
-                ON CONFLICT (user_id) DO UPDATE SET
-                    username = EXCLUDED.username,
-                    first_name = EXCLUDED.first_name,
-                    last_name = EXCLUDED.last_name,
-                    last_login = NOW()
-                RETURNING user_id, username, first_name, last_name, balance, experience, level;
-                """,
-                user_id,
-                username,
-                first_name,
-                last_name,
-                starting_balance,
-            )
-
-            # Проверяем, есть ли стартовая транзакция
-            exists = await conn.fetchval(
-                """SELECT EXISTS(
-                       SELECT 1 FROM transactions
-                       WHERE user_id=$1 AND type='reward' AND description='Стартовый бонус'
-                   )""",
+            # Сначала проверяем, есть ли пользователь
+            existing_user = await conn.fetchrow(
+                "SELECT user_id, balance, experience, level FROM users WHERE user_id = $1",
                 user_id,
             )
-            if not exists:
+            
+            if existing_user:
+                print(f"✅ Пользователь {user_id} уже существует в базе")
+                print(f"📊 Текущие данные: balance={existing_user['balance']}, experience={existing_user['experience']}, level={existing_user['level']}")
+                
+                # Обновляем только имя пользователя и время входа, НЕ баланс!
+                row = await conn.fetchrow(
+                    """
+                    UPDATE users 
+                    SET username = $1, first_name = $2, last_name = $3, last_login = NOW()
+                    WHERE user_id = $4
+                    RETURNING user_id, username, first_name, last_name, balance, experience, level;
+                    """,
+                    username,
+                    first_name,
+                    last_name,
+                    user_id,
+                )
+            else:
+                print(f"🆕 Создаем нового пользователя {user_id}")
+                # Используем starting_balance если передан, иначе 10000
+                balance = starting_balance if starting_balance is not None else 10000
+                
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO users (user_id, username, first_name, last_name, balance, experience, level, last_login)
+                    VALUES ($1,$2,$3,$4,$5,0,1,NOW())
+                    RETURNING user_id, username, first_name, last_name, balance, experience, level;
+                    """,
+                    user_id,
+                    username,
+                    first_name,
+                    last_name,
+                    balance,
+                )
+                
+                # Добавляем стартовую транзакцию только для новых пользователей
                 await conn.execute(
                     """
                     INSERT INTO transactions (user_id, type, amount, description)
                     VALUES ($1,'reward',$2,'Стартовый бонус')
                     """,
                     user_id,
-                    starting_balance,
+                    balance,
                 )
 
             return {
@@ -660,3 +673,76 @@ async def reset_all_user_data(pool: asyncpg.Pool) -> None:
         except Exception as e:
             print(f"❌ Ошибка при сбросе данных: {e}")
             raise
+
+
+async def update_user_balance(
+    pool: asyncpg.Pool,
+    user_id: int,
+    balance: int,
+    experience: Optional[int] = None,
+    level: Optional[int] = None
+) -> Dict[str, Any]:
+    """Обновление баланса пользователя"""
+    async with pool.acquire() as conn:
+        try:
+            async with conn.transaction():
+                print(f"💰 Обновление баланса пользователя {user_id}")
+                print(f"📊 Новые значения: balance={balance}, experience={experience}, level={level}")
+                
+                # Сначала проверяем, существует ли пользователь
+                user_exists = await conn.fetchval(
+                    "SELECT EXISTS(SELECT 1 FROM users WHERE user_id = $1)",
+                    user_id
+                )
+                
+                if not user_exists:
+                    print(f"❌ Пользователь {user_id} не найден, создаем нового")
+                    return {"error": "Пользователь не найден"}
+                
+                # Обновляем баланс
+                await conn.execute(
+                    """
+                    UPDATE users 
+                    SET balance = $1, last_login = NOW()
+                    WHERE user_id = $2
+                    """,
+                    balance,
+                    user_id,
+                )
+                
+                # Обновляем опыт если указан
+                if experience is not None:
+                    await conn.execute(
+                        "UPDATE users SET experience = $1 WHERE user_id = $2",
+                        experience,
+                        user_id,
+                    )
+                
+                # Обновляем уровень если указан
+                if level is not None:
+                    await conn.execute(
+                        "UPDATE users SET level = $1 WHERE user_id = $2",
+                        level,
+                        user_id,
+                    )
+                
+                # Получаем обновленные данные
+                user = await conn.fetchrow(
+                    "SELECT balance, experience, level FROM users WHERE user_id = $1",
+                    user_id,
+                )
+                
+                print(f"✅ Баланс обновлен: user_id={user_id}, new_balance={user['balance']}")
+                
+                return {
+                    "success": True,
+                    "user": {
+                        "balance": int(user["balance"]),
+                        "experience": int(user["experience"]),
+                        "level": int(user["level"])
+                    }
+                }
+                
+        except Exception as e:
+            print(f"❌ Ошибка обновления баланса для user_id={user_id}: {e}")
+            return {"error": f"Внутренняя ошибка сервера: {str(e)}"}
