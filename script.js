@@ -691,8 +691,7 @@ function prepareRouletteForCase(caseItem) {
         if (!elements.rouletteContainer || !elements.itemsTrack) return;
         
         // Центрируем первый предмет
-        const containerWidth = elements.rouletteContainer.clientWidth;
-        const itemWidth = 110;
+        const { containerWidth, itemWidth } = getRouletteMeasurements();
         
         // Вычисляем позицию чтобы первый предмет был в центре
         const initialPosition = (containerWidth / 2) - (itemWidth / 2);
@@ -738,7 +737,7 @@ function renderRouletteItems() {
     
     rouletteItems.forEach((item, index) => {
         const rouletteItem = document.createElement('div');
-        rouletteItem.className = `roulette-item`;
+        rouletteItem.className = `roulette-item ${item.rarity}`;
         rouletteItem.dataset.index = index;
         
         rouletteItem.innerHTML = `
@@ -926,16 +925,14 @@ function startRouletteAnimationSequence(resolve) {
     console.log('Запуск анимации рулетки');
     isScrolling = true;
     
-    const rouletteContainer = elements.rouletteContainer;
-    if (!rouletteContainer) {
+    if (!elements.rouletteContainer || !elements.itemsTrack) {
         resolve();
         return;
     }
     
-    const containerWidth = rouletteContainer.clientWidth;
-    const itemWidth = 110;
+    const { containerWidth, itemWidth, step } = getRouletteMeasurements();
     const startPosition = (containerWidth / 2) - (itemWidth / 2);
-    const targetItemCenter = winningItemIndex * itemWidth + itemWidth / 2;
+    const targetItemCenter = winningItemIndex * step + itemWidth / 2;
     const finalPosition = (containerWidth / 2) - targetItemCenter;
     
     // Устанавливаем начальную позицию
@@ -947,7 +944,7 @@ function startRouletteAnimationSequence(resolve) {
     // Даем браузеру время на отрисовку
     setTimeout(() => {
         animationStartTime = Date.now();
-        const animationDuration = 2000; // Уменьшаем до 2 секунд
+        const animationDuration = 2600;
         
         animateRoulette(startPosition, finalPosition, animationDuration, resolve);
     }, 50);
@@ -963,16 +960,8 @@ function animateRoulette(startPos, endPos, duration, resolve) {
     const elapsed = Date.now() - animationStartTime;
     let progress = Math.min(elapsed / duration, 1);
     
-    // Упрощенные фазы анимации для скорости
-    let easedProgress;
-    
-    if (progress < 0.3) {
-        easedProgress = easeOutSine(progress / 0.3) * 0.3;
-    } else if (progress < 0.7) {
-        easedProgress = 0.3 + (progress - 0.3) * 0.4;
-    } else {
-        easedProgress = 0.7 + easeOutCubic((progress - 0.7) / 0.3) * 0.3;
-    }
+    // Плавное замедление к финалу
+    let easedProgress = easeOutCubic(progress);
     
     const currentPos = startPos + (endPos - startPos) * easedProgress;
     
@@ -996,7 +985,8 @@ function updateCenterZoneItem() {
     
     const containerRect = elements.rouletteContainer.getBoundingClientRect();
     const centerX = containerRect.left + containerRect.width / 2;
-    const zoneWidth = 60;
+    const centerZone = elements.rouletteContainer.querySelector('.center-zone');
+    const zoneWidth = centerZone ? centerZone.getBoundingClientRect().width / 2 : 60;
     
     const items = document.querySelectorAll('.roulette-item');
     let closestItem = null;
@@ -1018,6 +1008,23 @@ function updateCenterZoneItem() {
     if (closestItem && closestDistance < zoneWidth) {
         closestItem.classList.add('highlighted');
     }
+}
+
+function getRouletteMeasurements() {
+    const containerWidth = elements.rouletteContainer?.clientWidth || 0;
+    const firstItem = elements.itemsTrack?.querySelector('.roulette-item');
+    const itemWidth = firstItem ? firstItem.getBoundingClientRect().width : 88;
+    const trackStyles = elements.itemsTrack ? getComputedStyle(elements.itemsTrack) : null;
+    const gapValue = trackStyles?.gap || trackStyles?.columnGap || '0';
+    const gap = parseFloat(gapValue) || 0;
+    const step = itemWidth + gap;
+
+    return {
+        containerWidth,
+        itemWidth,
+        gap,
+        step
+    };
 }
 
 // Завершение анимации рулетки - БЫСТРАЯ ВЕРСИЯ
@@ -1042,6 +1049,12 @@ function finishRouletteAnimation(resolve) {
 // Показ результата
 function showResult(item) {
     console.log('Показ результата:', item);
+    const resultCard = elements.resultModal?.querySelector('.result-modal');
+    if (resultCard) {
+        resultCard.classList.remove('result-modal--active');
+        void resultCard.offsetWidth;
+        resultCard.classList.add('result-modal--active');
+    }
     elements.resultItemName.textContent = item.name;
     elements.resultItemRarity.textContent = getRarityText(item.rarity);
     elements.resultItemRarity.className = `item-rarity ${item.rarity}`;
