@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Баланс WebApp</title>
+    <title>💰 Баланс и Профиль</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         * {
@@ -21,22 +21,48 @@
         }
         
         .container {
-            max-width: 400px;
+            max-width: 500px;
             margin: 0 auto;
         }
         
         .header {
             text-align: center;
-            margin-bottom: 30px;
-            padding: 20px;
+            margin-bottom: 25px;
+            padding: 15px;
         }
         
-        .user-info {
-            background: rgba(255, 255, 255, 0.1);
+        .header h1 {
+            margin-bottom: 5px;
+            font-size: 24px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        
+        .user-profile {
+            background: rgba(255, 255, 255, 0.15);
             padding: 15px;
             border-radius: 15px;
             margin-bottom: 20px;
             backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .profile-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+        
+        .profile-label {
+            opacity: 0.8;
+        }
+        
+        .profile-value {
+            font-weight: 500;
         }
         
         .balance-card {
@@ -45,55 +71,87 @@
             padding: 25px;
             border-radius: 20px;
             text-align: center;
-            margin-bottom: 25px;
+            margin-bottom: 20px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .balance-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 5px;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+        }
+        
+        .balance-label {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 5px;
         }
         
         .balance-amount {
             font-size: 48px;
             font-weight: bold;
             margin: 10px 0;
-            color: #667eea;
+            color: #2d3748;
+        }
+        
+        .balance-currency {
+            font-size: 16px;
+            color: #4a5568;
         }
         
         .controls {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 15px;
-            margin-bottom: 25px;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 20px;
         }
         
         .btn {
-            padding: 18px;
+            padding: 16px;
             border: none;
-            border-radius: 15px;
-            font-size: 18px;
+            border-radius: 12px;
+            font-size: 16px;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 10px;
+            gap: 8px;
         }
         
-        .btn-primary {
-            background: #667eea;
-            color: white;
+        .btn span {
+            font-size: 18px;
         }
         
         .btn-success {
-            background: #4CAF50;
-            color: white;
-        }
-        
-        .btn-warning {
-            background: #FF9800;
+            background: linear-gradient(135deg, #4CAF50, #2E7D32);
             color: white;
         }
         
         .btn-danger {
-            background: #f44336;
+            background: linear-gradient(135deg, #f44336, #c62828);
+            color: white;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+        
+        .btn-warning {
+            background: linear-gradient(135deg, #FF9800, #EF6C00);
+            color: white;
+        }
+        
+        .btn-info {
+            background: linear-gradient(135deg, #2196F3, #1565C0);
             color: white;
         }
         
@@ -107,23 +165,29 @@
         }
         
         .sync-status {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 15px;
-            border-radius: 15px;
-            margin-top: 20px;
+            background: rgba(255, 255, 255, 0.15);
+            padding: 12px;
+            border-radius: 12px;
+            margin-top: 15px;
             text-align: center;
             backdrop-filter: blur(10px);
             display: none;
+            border-left: 4px solid transparent;
         }
         
         .status-success {
-            background: rgba(76, 175, 80, 0.2);
-            border-left: 4px solid #4CAF50;
+            border-left-color: #4CAF50;
+            background: rgba(76, 175, 80, 0.15);
         }
         
         .status-error {
-            background: rgba(244, 67, 54, 0.2);
-            border-left: 4px solid #f44336;
+            border-left-color: #f44336;
+            background: rgba(244, 67, 54, 0.15);
+        }
+        
+        .status-warning {
+            border-left-color: #FF9800;
+            background: rgba(255, 152, 0, 0.15);
         }
         
         .loading {
@@ -133,8 +197,8 @@
         }
         
         .spinner {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #667eea;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #fff;
             border-radius: 50%;
             width: 40px;
             height: 40px;
@@ -147,8 +211,22 @@
             100% { transform: rotate(360deg); }
         }
         
-        .history {
-            margin-top: 30px;
+        .history-section {
+            margin-top: 25px;
+        }
+        
+        .history-title {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .history-list {
+            max-height: 300px;
+            overflow-y: auto;
         }
         
         .history-item {
@@ -158,56 +236,129 @@
             margin-bottom: 10px;
             display: flex;
             justify-content: space-between;
+            align-items: center;
             backdrop-filter: blur(10px);
+            transition: background 0.3s;
         }
         
-        .positive { color: #4CAF50; }
-        .negative { color: #f44336; }
+        .history-item:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+        
+        .positive {
+            color: #4CAF50;
+            font-weight: 600;
+        }
+        
+        .negative {
+            color: #f44336;
+            font-weight: 600;
+        }
+        
+        .neutral {
+            color: #FF9800;
+            font-weight: 600;
+        }
+        
+        /* Скроллбар */
+        .history-list::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .history-list::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+        }
+        
+        .history-list::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 3px;
+        }
+        
+        .history-list::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.4);
+        }
+        
+        /* Адаптивность */
+        @media (max-width: 480px) {
+            .controls {
+                grid-template-columns: 1fr;
+            }
+            
+            .balance-amount {
+                font-size: 40px;
+            }
+            
+            .btn {
+                padding: 14px;
+                font-size: 15px;
+            }
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>💰 Баланс WebApp</h1>
+            <h1>💰 Баланс и Профиль</h1>
             <p>Синхронизация с Telegram ботом</p>
         </div>
         
-        <div class="user-info">
-            <div>👤 Пользователь: <span id="username">...</span></div>
-            <div>🆔 ID: <span id="userid">...</span></div>
+        <div class="user-profile">
+            <div class="profile-row">
+                <div class="profile-label">👤 Пользователь:</div>
+                <div class="profile-value" id="username">Загрузка...</div>
+            </div>
+            <div class="profile-row">
+                <div class="profile-label">🆔 ID:</div>
+                <div class="profile-value" id="userid">-</div>
+            </div>
+            <div id="profileInfo"></div>
         </div>
         
         <div class="balance-card">
-            <div>Текущий баланс</div>
+            <div class="balance-label">Текущий баланс</div>
             <div class="balance-amount" id="balance">0</div>
-            <div>рублей</div>
+            <div class="balance-currency">рублей</div>
         </div>
         
         <div class="controls">
             <button class="btn btn-success" onclick="changeBalance(100)">
-                <span>➕</span> +100
+                <span>➕</span> +100 руб.
             </button>
             <button class="btn btn-danger" onclick="changeBalance(-100)">
-                <span>➖</span> -100
+                <span>➖</span> -100 руб.
             </button>
-            <button class="btn btn-primary" onclick="syncWithBot()">
+            <button class="btn btn-primary" onclick="syncWithServer()">
                 <span>🔄</span> Синхронизировать
             </button>
             <button class="btn btn-warning" onclick="resetBalance()">
                 <span>🔄</span> Сбросить
             </button>
+            <button class="btn btn-info" onclick="showProfile()">
+                <span>👤</span> Профиль
+            </button>
+            <button class="btn" onclick="forceSync()" style="background: #9C27B0; color: white;">
+                <span>⚡</span> Форс-синх
+            </button>
         </div>
         
         <div class="loading" id="loading">
             <div class="spinner"></div>
-            <div>Синхронизация...</div>
+            <div>Загрузка...</div>
         </div>
         
         <div class="sync-status" id="status"></div>
         
-        <div class="history">
-            <h3>📊 История изменений</h3>
-            <div id="historyList"></div>
+        <div class="history-section">
+            <div class="history-title">
+                <h3>📊 История операций</h3>
+                <div style="font-size: 14px; opacity: 0.8;">Всего: <span id="historyCount">0</span></div>
+            </div>
+            <div class="history-list" id="historyList">
+                <div style="text-align: center; padding: 20px; opacity: 0.7;">
+                    История операций появится здесь
+                </div>
+            </div>
         </div>
     </div>
     
