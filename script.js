@@ -23,6 +23,12 @@ let currentCase = null;
 let currentItem = null;
 let isOpening = false;
 
+// Кэш текстур
+let texturesCache = {
+    cases: {},
+    items: {}
+};
+
 // Переменные для рулетки
 let scrollPosition = 0;
 let targetScroll = 0;
@@ -134,12 +140,110 @@ function easeOutCubic(t) {
     return 1 - Math.pow(1 - t, 3);
 }
 
+// Функция для загрузки текстур
+async function loadTextures() {
+    console.log('Загрузка текстур...');
+    
+    // Список текстур для загрузки
+    const texturesToLoad = [
+        // Кейсы
+        { type: 'cases', name: 'case_food', path: 'assets/textures/cases/case_food.png' },
+        { type: 'cases', name: 'case_resources', path: 'assets/textures/cases/case_resources.png' },
+        { type: 'cases', name: 'case_weapons', path: 'assets/textures/cases/case_weapons.png' },
+        { type: 'cases', name: 'case_legendary', path: 'assets/textures/cases/case_legendary.png' },
+        { type: 'cases', name: 'case_donate', path: 'assets/textures/cases/case_donate.png' },
+        { type: 'cases', name: 'case_random', path: 'assets/textures/cases/case_random.png' },
+        
+        // Предметы (основные)
+        { type: 'items', name: 'diamond', path: 'assets/textures/items/diamond.png' },
+        { type: 'items', name: 'emerald', path: 'assets/textures/items/emerald.png' },
+        { type: 'items', name: 'gold_ingot', path: 'assets/textures/items/gold_ingot.png' },
+        { type: 'items', name: 'iron_ingot', path: 'assets/textures/items/iron_ingot.png' },
+        { type: 'items', name: 'apple', path: 'assets/textures/items/apple.png' },
+        { type: 'items', name: 'bread', path: 'assets/textures/items/bread.png' },
+        { type: 'items', name: 'diamond_sword', path: 'assets/textures/items/diamond_sword.png' },
+        { type: 'items', name: 'bow', path: 'assets/textures/items/bow.png' }
+    ];
+    
+    const loadPromises = texturesToLoad.map(texture => {
+        return new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+                console.log(`✅ Загружена текстура: ${texture.name}`);
+                texturesCache[texture.type][texture.name] = img;
+                resolve();
+            };
+            img.onerror = () => {
+                console.warn(`❌ Не удалось загрузить: ${texture.path}`);
+                // Создаем fallback изображение
+                const canvas = document.createElement('canvas');
+                canvas.width = 64;
+                canvas.height = 64;
+                const ctx = canvas.getContext('2d');
+                
+                // Создаем простой цветной квадрат как fallback
+                const colors = {
+                    'cases': '#4b69ff',
+                    'items': '#ffd700'
+                };
+                ctx.fillStyle = colors[texture.type] || '#888888';
+                ctx.fillRect(0, 0, 64, 64);
+                
+                const fallbackImg = new Image();
+                fallbackImg.src = canvas.toDataURL();
+                texturesCache[texture.type][texture.name] = fallbackImg;
+                resolve();
+            };
+            img.src = texture.path;
+        });
+    });
+    
+    await Promise.all(loadPromises);
+    console.log('Все текстуры загружены');
+}
+
+// Получение имени текстуры из URL
+function getTextureNameFromUrl(url) {
+    if (!url) return null;
+    const parts = url.split('/');
+    const filename = parts[parts.length - 1];
+    return filename.replace('.png', '');
+}
+
+// Получение HTML для изображения кейса
+function getCaseImageHTML(caseItem) {
+    const textureName = getTextureNameFromUrl(caseItem.texture_url);
+    
+    if (textureName && texturesCache.cases[textureName]) {
+        return `<div class="case-texture" style="background-image: url('${texturesCache.cases[textureName].src}')"></div>`;
+    }
+    
+    // Fallback на эмодзи
+    return `<div class="case-icon">${caseItem.icon}</div>`;
+}
+
+// Получение HTML для изображения предмета
+function getItemImageHTML(item) {
+    if (item.texture_url) {
+        const textureName = getTextureNameFromUrl(item.texture_url);
+        if (textureName && texturesCache.items[textureName]) {
+            return `<img src="${texturesCache.items[textureName].src}" alt="${item.name}" class="item-image">`;
+        }
+    }
+    
+    // Fallback на эмодзи
+    return `<div class="item-icon">${item.icon}</div>`;
+}
+
 // Инициализация приложения
 async function initApp() {
     console.log('Инициализация приложения...');
     showLoading();
     
     try {
+        // Загружаем текстуры
+        await loadTextures();
+        
         // Сначала пытаемся загрузить из localStorage для быстрого отображения
         loadFromLocalStorage();
         
@@ -239,7 +343,8 @@ function loadDemoData() {
             price: 100,
             icon: '🍎',
             description: 'Содержит разнообразную еду и напитки',
-            rarityWeights: { common: 60, uncommon: 40 }
+            rarityWeights: { common: 60, uncommon: 40 },
+            texture_url: 'assets/textures/cases/case_food.png'
         },
         {
             id: 2,
@@ -247,7 +352,8 @@ function loadDemoData() {
             price: 250,
             icon: '⛏️',
             description: 'Руды, минералы и базовые ресурсы',
-            rarityWeights: { common: 40, uncommon: 50, rare: 10 }
+            rarityWeights: { common: 40, uncommon: 50, rare: 10 },
+            texture_url: 'assets/textures/cases/case_resources.png'
         },
         {
             id: 3,
@@ -255,7 +361,8 @@ function loadDemoData() {
             price: 500,
             icon: '⚔️',
             description: 'Оружие, броня и инструменты',
-            rarityWeights: { uncommon: 30, rare: 50, epic: 20 }
+            rarityWeights: { uncommon: 30, rare: 50, epic: 20 },
+            texture_url: 'assets/textures/cases/case_weapons.png'
         },
         {
             id: 4,
@@ -263,7 +370,8 @@ function loadDemoData() {
             price: 1000,
             icon: '🌟',
             description: 'Уникальные и легендарные предметы',
-            rarityWeights: { rare: 20, epic: 50, legendary: 30 }
+            rarityWeights: { rare: 20, epic: 50, legendary: 30 },
+            texture_url: 'assets/textures/cases/case_legendary.png'
         },
         {
             id: 5,
@@ -271,7 +379,8 @@ function loadDemoData() {
             price: 5000,
             icon: '👑',
             description: 'Эксклюзивные донат предметы',
-            rarityWeights: { epic: 30, legendary: 70 }
+            rarityWeights: { epic: 30, legendary: 70 },
+            texture_url: 'assets/textures/cases/case_donate.png'
         },
         {
             id: 6,
@@ -279,7 +388,8 @@ function loadDemoData() {
             price: 750,
             icon: '🧰',
             description: 'Микс из всех категорий',
-            rarityWeights: { common: 30, uncommon: 40, rare: 20, epic: 10 }
+            rarityWeights: { common: 30, uncommon: 40, rare: 20, epic: 10 },
+            texture_url: 'assets/textures/cases/case_random.png'
         }
     ];
     
@@ -492,7 +602,7 @@ function updateUI() {
     renderInventory();
 }
 
-// Отрисовка кейсов
+// Отрисовка кейсов с PNG
 function renderCases() {
     console.log('Отрисовка кейсов...');
     if (!elements.casesGrid) return;
@@ -510,12 +620,16 @@ function renderCases() {
         caseCard.dataset.id = caseItem.id;
         caseCard.style.setProperty('--index', index);
         
+        // Получаем HTML для изображения кейса
+        const caseImageHTML = getCaseImageHTML(caseItem);
+        
         // Собираем примеры предметов для превью
         const previewItems = getPreviewItems(caseItem);
         
         caseCard.innerHTML = `
             <div class="case-image">
-                <div class="case-icon">${caseItem.icon}</div>
+                ${caseImageHTML}
+                <div class="case-glow"></div>
                 <div class="case-items-preview">
                     ${previewItems.map(item => `<span>${item.icon}</span>`).join('')}
                 </div>
@@ -587,7 +701,7 @@ function renderInventory() {
         itemElement.dataset.rarity = item.rarity;
         
         itemElement.innerHTML = `
-            <div class="item-icon">${item.icon}</div>
+            ${getItemImageHTML(item)}
             <h4>${item.name}</h4>
             <span class="item-rarity ${item.rarity}">${getRarityText(item.rarity)}</span>
             <p style="font-size: 0.8rem; color: var(--accent-diamond); margin-top: 5px;">
@@ -691,8 +805,7 @@ function prepareRouletteForCase(caseItem) {
         if (!elements.rouletteContainer || !elements.itemsTrack) return;
         
         // Центрируем первый предмет
-        const containerWidth = elements.rouletteContainer.clientWidth;
-        const itemWidth = 110;
+        const { containerWidth, itemWidth } = getRouletteMeasurements();
         
         // Вычисляем позицию чтобы первый предмет был в центре
         const initialPosition = (containerWidth / 2) - (itemWidth / 2);
@@ -729,7 +842,7 @@ function generateInitialRouletteSequence(caseItem) {
     return sequence;
 }
 
-// Отрисовка предметов в рулетке
+// Отрисовка предметов в рулетке с поддержкой PNG
 function renderRouletteItems() {
     console.log('Отрисовка рулетки...');
     if (!elements.itemsTrack) return;
@@ -738,11 +851,14 @@ function renderRouletteItems() {
     
     rouletteItems.forEach((item, index) => {
         const rouletteItem = document.createElement('div');
-        rouletteItem.className = `roulette-item`;
+        rouletteItem.className = `roulette-item ${item.rarity}`;
         rouletteItem.dataset.index = index;
         
+        // Получаем HTML для изображения предмета
+        const itemImageHTML = getItemImageHTML(item);
+        
         rouletteItem.innerHTML = `
-            <div class="roulette-item-icon">${item.icon}</div>
+            <div class="roulette-item-icon">${itemImageHTML}</div>
             <div class="roulette-item-name">${item.name}</div>
             <div class="roulette-item-rarity ${item.rarity}">${getRarityText(item.rarity)}</div>
         `;
@@ -926,16 +1042,14 @@ function startRouletteAnimationSequence(resolve) {
     console.log('Запуск анимации рулетки');
     isScrolling = true;
     
-    const rouletteContainer = elements.rouletteContainer;
-    if (!rouletteContainer) {
+    if (!elements.rouletteContainer || !elements.itemsTrack) {
         resolve();
         return;
     }
     
-    const containerWidth = rouletteContainer.clientWidth;
-    const itemWidth = 110;
+    const { containerWidth, itemWidth, step } = getRouletteMeasurements();
     const startPosition = (containerWidth / 2) - (itemWidth / 2);
-    const targetItemCenter = winningItemIndex * itemWidth + itemWidth / 2;
+    const targetItemCenter = winningItemIndex * step + itemWidth / 2;
     const finalPosition = (containerWidth / 2) - targetItemCenter;
     
     // Устанавливаем начальную позицию
@@ -947,7 +1061,7 @@ function startRouletteAnimationSequence(resolve) {
     // Даем браузеру время на отрисовку
     setTimeout(() => {
         animationStartTime = Date.now();
-        const animationDuration = 2000; // Уменьшаем до 2 секунд
+        const animationDuration = 2600;
         
         animateRoulette(startPosition, finalPosition, animationDuration, resolve);
     }, 50);
@@ -963,16 +1077,8 @@ function animateRoulette(startPos, endPos, duration, resolve) {
     const elapsed = Date.now() - animationStartTime;
     let progress = Math.min(elapsed / duration, 1);
     
-    // Упрощенные фазы анимации для скорости
-    let easedProgress;
-    
-    if (progress < 0.3) {
-        easedProgress = easeOutSine(progress / 0.3) * 0.3;
-    } else if (progress < 0.7) {
-        easedProgress = 0.3 + (progress - 0.3) * 0.4;
-    } else {
-        easedProgress = 0.7 + easeOutCubic((progress - 0.7) / 0.3) * 0.3;
-    }
+    // Плавное замедление к финалу
+    let easedProgress = easeOutCubic(progress);
     
     const currentPos = startPos + (endPos - startPos) * easedProgress;
     
@@ -996,7 +1102,8 @@ function updateCenterZoneItem() {
     
     const containerRect = elements.rouletteContainer.getBoundingClientRect();
     const centerX = containerRect.left + containerRect.width / 2;
-    const zoneWidth = 60;
+    const centerZone = elements.rouletteContainer.querySelector('.center-zone');
+    const zoneWidth = centerZone ? centerZone.getBoundingClientRect().width / 2 : 60;
     
     const items = document.querySelectorAll('.roulette-item');
     let closestItem = null;
@@ -1020,6 +1127,23 @@ function updateCenterZoneItem() {
     }
 }
 
+function getRouletteMeasurements() {
+    const containerWidth = elements.rouletteContainer?.clientWidth || 0;
+    const firstItem = elements.itemsTrack?.querySelector('.roulette-item');
+    const itemWidth = firstItem ? firstItem.getBoundingClientRect().width : 88;
+    const trackStyles = elements.itemsTrack ? getComputedStyle(elements.itemsTrack) : null;
+    const gapValue = trackStyles?.gap || trackStyles?.columnGap || '0';
+    const gap = parseFloat(gapValue) || 0;
+    const step = itemWidth + gap;
+
+    return {
+        containerWidth,
+        itemWidth,
+        gap,
+        step
+    };
+}
+
 // Завершение анимации рулетки - БЫСТРАЯ ВЕРСИЯ
 function finishRouletteAnimation(resolve) {
     console.log('Завершение анимации рулетки');
@@ -1039,14 +1163,25 @@ function finishRouletteAnimation(resolve) {
     }, 300);
 }
 
-// Показ результата
+// Показ результата с PNG изображением
 function showResult(item) {
     console.log('Показ результата:', item);
+    const resultCard = elements.resultModal?.querySelector('.result-modal');
+    if (resultCard) {
+        resultCard.classList.remove('result-modal--active');
+        void resultCard.offsetWidth;
+        resultCard.classList.add('result-modal--active');
+    }
+    
     elements.resultItemName.textContent = item.name;
     elements.resultItemRarity.textContent = getRarityText(item.rarity);
     elements.resultItemRarity.className = `item-rarity ${item.rarity}`;
     elements.resultItemPrice.textContent = item.price.toLocaleString();
-    elements.resultItemIcon.textContent = item.icon;
+    
+    // Обновляем иконку с поддержкой PNG
+    const itemImageHTML = getItemImageHTML(item);
+    elements.resultItemIcon.innerHTML = itemImageHTML;
+    
     elements.newBalance.textContent = userData.balance.toLocaleString();
     
     createParticles();
