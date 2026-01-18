@@ -342,7 +342,7 @@ function loadDemoData() {
             name: '🍎 Кейс с Едой',
             price: 100,
             icon: '🍎',
-            description: 'Содержит разнообразную еду и напитки',
+            description: 'Содержит разнообразную еду',
             rarityWeights: { common: 60, uncommon: 40 },
             texture_url: 'assets/textures/cases/case_food.png'
         },
@@ -369,7 +369,7 @@ function loadDemoData() {
             name: '🌟 Легендарный Кейс',
             price: 1000,
             icon: '🌟',
-            description: 'Уникальные и легендарные предметы',
+            description: 'Уникальные предметы',
             rarityWeights: { rare: 20, epic: 50, legendary: 30 },
             texture_url: 'assets/textures/cases/case_legendary.png'
         },
