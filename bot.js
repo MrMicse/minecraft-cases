@@ -1,12 +1,14 @@
-// bot.js - ИСПРАВЛЕННАЯ ВЕРСИЯ С СИНХРОНИЗАЦИЕЙ
+// bot.js - ВЕРСИЯ С CORS И УЛУЧШЕННОЙ СИНХРОНИЗАЦИЕЙ
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 const fs = require('fs');
+const cors = require('cors');
 
 // ========== КОНФИГУРАЦИЯ ==========
 const TELEGRAM_TOKEN = "6010244074:AAF703_o0k1nhFpA3_EhRixwpZgm6zRrITQ";
 const PORT = 3000;
-const WEBAPP_URL = 'https://mrmicse.github.io/minecraft-cases';
+const WEBAPP_URL = 'https://mrmicse.github.io';
+const WEBAPP_ORIGIN = 'https://mrmicse.github.io';
 
 // ========== ИНИЦИАЛИЗАЦИЯ ==========
 const bot = new TelegramBot(TELEGRAM_TOKEN, { 
@@ -14,6 +16,13 @@ const bot = new TelegramBot(TELEGRAM_TOKEN, {
 });
 
 const app = express();
+
+// ========== НАСТРОЙКА CORS ==========
+app.use(cors({
+    origin: [WEBAPP_ORIGIN, 'http://localhost:3000', 'http://127.0.0.1:3000'],
+    credentials: true
+}));
+
 app.use(express.json());
 
 // ========== ХРАНИЛИЩЕ ДАННЫХ ==========
@@ -38,42 +47,49 @@ function loadData() {
 function saveData() {
     try {
         fs.writeFileSync(DATA_FILE, JSON.stringify(users, null, 2));
+        console.log('✅ Данные сохранены');
         return true;
     } catch (error) {
-        console.error('Ошибка сохранения:', error);
+        console.error('❌ Ошибка сохранения:', error);
         return false;
     }
 }
 
 // Инициализация пользователя
 function initUser(userId, userInfo) {
-    if (!users[userId]) {
+    const isNewUser = !users[userId];
+    
+    if (isNewUser) {
         users[userId] = {
             id: userId,
             firstName: userInfo.first_name || 'Пользователь',
             balance: 10000,
             createdAt: new Date().toISOString(),
-            lastSync: null,
-            history: [],
-            webappUrl: `${WEBAPP_URL}/?tg_id=${userId}&balance=10000&name=${encodeURIComponent(userInfo.first_name || 'Пользователь')}`
+            lastSync: new Date().toISOString(),
+            history: [{
+                type: 'initial',
+                amount: 10000,
+                date: new Date().toISOString(),
+                source: 'system'
+            }]
         };
         saveData();
-        console.log(`Новый пользователь: ${userId} (${users[userId].firstName})`);
+        console.log(`👤 Новый пользователь: ${userId} (${users[userId].firstName})`);
     }
     
-    // Всегда обновляем URL с актуальным балансом
-    users[userId].webappUrl = `${WEBAPP_URL}/?tg_id=${userId}&balance=${users[userId].balance}&name=${encodeURIComponent(users[userId].firstName)}`;
+    // Всегда обновляем URL
+    users[userId].webappUrl = `${WEBAPP_URL}/?tg_id=${userId}&balance=${users[userId].balance}&name=${encodeURIComponent(users[userId].firstName)}&ts=${Date.now()}`;
     
     return users[userId];
 }
 
 // Функция для обновления баланса
-function updateBalance(userId, amount) {
+function updateBalance(userId, amount, source = 'bot') {
     const user = users[userId];
-    if (!user) return false;
+    if (!user) return { success: false, message: 'User not found' };
     
     if (amount < 0 && user.balance < Math.abs(amount)) {
-        return false; // Недостаточно средств
+        return { success: false, message: 'Insufficient funds' };
     }
     
     const oldBalance = user.balance;
@@ -85,14 +101,15 @@ function updateBalance(userId, amount) {
         date: new Date().toISOString(),
         balanceBefore: oldBalance,
         balanceAfter: user.balance,
-        source: 'bot'
+        source: source
     });
     
     user.lastSync = new Date().toISOString();
-    user.webappUrl = `${WEBAPP_URL}/?tg_id=${userId}&balance=${user.balance}&name=${encodeURIComponent(user.firstName)}`;
-    
     saveData();
-    return true;
+    
+    console.log(`💰 ${source === 'bot' ? 'Бот' : 'WebApp'}: ${userId} - ${oldBalance} → ${user.balance} (${amount > 0 ? '+' : ''}${amount})`);
+    
+    return { success: true, newBalance: user.balance };
 }
 
 // ========== КОМАНДЫ БОТА ==========
@@ -116,74 +133,27 @@ bot.onText(/\/start/, (msg) => {
     
     bot.sendMessage(chatId, 
         `👋 Привет, ${user.firstName}!\n\n` +
-        `Добро пожаловать в систему управления балансом!\n\n` +
         `💰 Баланс: ${user.balance.toLocaleString('ru-RU')} ₽\n` +
         `🆔 ID: ${user.id}\n` +
         `📅 Регистрация: ${new Date(user.createdAt).toLocaleDateString('ru-RU')}\n\n` +
-        `Команды:\n` +
-        `/profile - ваш профиль\n` +
-        `/balance - текущий баланс\n` +
-        `/sync - синхронизировать\n` +
-        `/webapp - открыть мини-приложение`,
+        `Нажмите "WebApp" для открытия мини-приложения`,
         keyboard
     );
 });
 
-// /profile
-bot.onText(/\/profile|Профиль/, (msg) => {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
-    const user = initUser(userId, msg.from);
-    
-    const lastSync = user.lastSync ? 
-        new Date(user.lastSync).toLocaleTimeString('ru-RU') : 'никогда';
-    
-    bot.sendMessage(chatId, 
-        `👤 ВАШ ПРОФИЛЬ\n\n` +
-        `▫️ Имя: ${user.firstName}\n` +
-        `▫️ Баланс: ${user.balance.toLocaleString('ru-RU')} ₽\n` +
-        `▫️ ID: ${user.id}\n` +
-        `▫️ Регистрация: ${new Date(user.createdAt).toLocaleDateString('ru-RU')}\n` +
-        `▫️ Синхронизация: ${lastSync}\n` +
-        `▫️ Операций: ${user.history.length}\n\n` +
-        `💡 Команды:\n` +
-        `▫️ /profile - ваш профиль\n` +
-        `▫️ /balance - текущий баланс\n` +
-        `▫️ /sync - синхронизировать\n` +
-        `▫️ /webapp - открыть мини-приложение`
-    );
-});
-
-// /balance
-bot.onText(/\/balance|Баланс/, (msg) => {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
-    const user = initUser(userId, msg.from);
-    
-    bot.sendMessage(chatId, 
-        `💰 Текущий баланс: ${user.balance.toLocaleString('ru-RU')} ₽\n\n` +
-        `💡 Используйте мини-приложение для управления`
-    );
-});
-
-// +100
+// Обработка кнопок +100/-100
 bot.onText(/\+100/, (msg) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     
-    // Обязательно инициализируем пользователя
     const user = initUser(userId, msg.from);
+    const result = updateBalance(userId, 100, 'bot');
     
-    if (updateBalance(userId, 100)) {
+    if (result.success) {
         bot.sendMessage(chatId, 
             `✅ +100 ₽\n` +
-            `Новый баланс: ${user.balance.toLocaleString('ru-RU')} ₽`
-        );
-        
-        // Отправляем уведомление о синхронизации
-        bot.sendMessage(chatId,
-            `🔄 Баланс обновлен в системе\n` +
-            `WebApp получит актуальные данные при следующем открытии`,
+            `Новый баланс: ${result.newBalance.toLocaleString('ru-RU')} ₽\n\n` +
+            `Откройте WebApp для просмотра`,
             {
                 reply_markup: {
                     inline_keyboard: [[
@@ -196,28 +166,22 @@ bot.onText(/\+100/, (msg) => {
             }
         );
     } else {
-        bot.sendMessage(chatId, '❌ Ошибка обновления баланса!');
+        bot.sendMessage(chatId, '❌ Ошибка обновления баланса');
     }
 });
 
-// -100
 bot.onText(/\-100/, (msg) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     
-    // Обязательно инициализируем пользователя
     const user = initUser(userId, msg.from);
+    const result = updateBalance(userId, -100, 'bot');
     
-    if (updateBalance(userId, -100)) {
+    if (result.success) {
         bot.sendMessage(chatId, 
             `✅ -100 ₽\n` +
-            `Новый баланс: ${user.balance.toLocaleString('ru-RU')} ₽`
-        );
-        
-        // Отправляем уведомление о синхронизации
-        bot.sendMessage(chatId,
-            `🔄 Баланс обновлен в системе\n` +
-            `WebApp получит актуальные данные при следующем открытии`,
+            `Новый баланс: ${result.newBalance.toLocaleString('ru-RU')} ₽\n\n` +
+            `Откройте WebApp для просмотра`,
             {
                 reply_markup: {
                     inline_keyboard: [[
@@ -234,48 +198,17 @@ bot.onText(/\-100/, (msg) => {
     }
 });
 
-// Синхронизация
-bot.onText(/\/sync|Синхронизация/, (msg) => {
-    const chatId = msg.chat.id;
-    const userId = msg.from.id;
-    const user = initUser(userId, msg.from);
-    
-    user.lastSync = new Date().toISOString();
-    saveData();
-    
-    // Отправляем обновленный URL
-    const updatedUrl = `${WEBAPP_URL}/?tg_id=${userId}&balance=${user.balance}&name=${encodeURIComponent(user.firstName)}&force_sync=true&ts=${Date.now()}`;
-    
-    bot.sendMessage(chatId, 
-        `✅ Синхронизация выполнена\n\n` +
-        `Баланс: ${user.balance.toLocaleString('ru-RU')} ₽\n` +
-        `Время: ${new Date().toLocaleTimeString('ru-RU')}\n\n` +
-        `WebApp получит актуальные данные при следующем открытии`,
-        {
-            reply_markup: {
-                inline_keyboard: [[
-                    {
-                        text: '📱 Открыть WebApp с актуальными данными',
-                        web_app: { url: updatedUrl }
-                    }
-                ]]
-            }
-        }
-    );
-});
-
-// Открытие WebApp
+// WebApp кнопка
 bot.onText(/\/webapp|WebApp/, (msg) => {
     const chatId = msg.chat.id;
     const userId = msg.from.id;
     const user = initUser(userId, msg.from);
     
-    // Добавляем timestamp для предотвращения кэширования
-    const webappUrl = `${WEBAPP_URL}/?tg_id=${userId}&balance=${user.balance}&name=${encodeURIComponent(user.firstName)}&force_sync=true&ts=${Date.now()}`;
+    const webappUrl = `${WEBAPP_URL}/?tg_id=${userId}&balance=${user.balance}&name=${encodeURIComponent(user.firstName)}&ts=${Date.now()}`;
     
     bot.sendMessage(chatId, 
-        `📱 Откройте мини-приложение для полного управления балансом:\n\n` +
-        `💰 Текущий баланс: ${user.balance.toLocaleString('ru-RU')} ₽`,
+        `📱 Нажмите кнопку ниже для открытия мини-приложения:\n\n` +
+        `💰 Баланс: ${user.balance.toLocaleString('ru-RU')} ₽`,
         {
             reply_markup: {
                 inline_keyboard: [[
@@ -289,17 +222,76 @@ bot.onText(/\/webapp|WebApp/, (msg) => {
     );
 });
 
-// ========== API ДЛЯ СИНХРОНИЗАЦИИ ==========
+// Синхронизация
+bot.onText(/\/sync|Синхронизация/, (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+    const user = initUser(userId, msg.from);
+    
+    user.lastSync = new Date().toISOString();
+    saveData();
+    
+    bot.sendMessage(chatId, 
+        `✅ Данные синхронизированы\n\n` +
+        `💰 Баланс: ${user.balance.toLocaleString('ru-RU')} ₽\n` +
+        `🕐 Время: ${new Date().toLocaleTimeString('ru-RU')}`
+    );
+});
+
+// Профиль
+bot.onText(/\/profile|Профиль/, (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+    const user = initUser(userId, msg.from);
+    
+    const lastSync = user.lastSync ? 
+        new Date(user.lastSync).toLocaleTimeString('ru-RU') : 'никогда';
+    
+    bot.sendMessage(chatId, 
+        `👤 ПРОФИЛЬ\n\n` +
+        `▫️ Имя: ${user.firstName}\n` +
+        `▫️ Баланс: ${user.balance.toLocaleString('ru-RU')} ₽\n` +
+        `▫️ ID: ${user.id}\n` +
+        `▫️ Синхронизация: ${lastSync}\n` +
+        `▫️ Операций: ${user.history.length}`
+    );
+});
+
+// Баланс
+bot.onText(/\/balance|Баланс/, (msg) => {
+    const chatId = msg.chat.id;
+    const userId = msg.from.id;
+    const user = initUser(userId, msg.from);
+    
+    bot.sendMessage(chatId, 
+        `💰 Баланс: ${user.balance.toLocaleString('ru-RU')} ₽`
+    );
+});
+
+// ========== API ДЛЯ WEBAPP ==========
+
+// Проверка сервера
+app.get('/api/ping', (req, res) => {
+    res.json({
+        success: true,
+        message: 'Server is running',
+        timestamp: new Date().toISOString(),
+        users: Object.keys(users).length
+    });
+});
 
 // Получить данные пользователя
 app.get('/api/user/:userId', (req, res) => {
     const userId = req.params.userId;
     const user = users[userId];
     
+    console.log(`📡 GET /api/user/${userId}`, user ? 'found' : 'not found');
+    
     if (!user) {
         return res.status(404).json({
             success: false,
-            error: 'User not found'
+            error: 'User not found',
+            suggestion: 'Send /start in bot first'
         });
     }
     
@@ -310,25 +302,34 @@ app.get('/api/user/:userId', (req, res) => {
             firstName: user.firstName,
             balance: user.balance,
             lastSync: user.lastSync,
-            history: user.history.slice(-10)
+            history: user.history.slice(-20),
+            webappUrl: user.webappUrl
         }
     });
 });
 
-// Синхронизировать данные
+// Синхронизировать данные (WebApp → Server)
 app.post('/api/user/:userId/sync', (req, res) => {
     const userId = req.params.userId;
     const { balance, operation } = req.body;
     
-    let user = users[userId];
-    if (!user) {
-        return res.status(404).json({
-            success: false,
-            error: 'User not found'
-        });
+    console.log(`📡 POST /api/user/${userId}/sync`, { balance, operation });
+    
+    // Создаем пользователя, если не существует
+    if (!users[userId]) {
+        users[userId] = {
+            id: userId,
+            firstName: 'WebApp User',
+            balance: balance || 10000,
+            createdAt: new Date().toISOString(),
+            lastSync: new Date().toISOString(),
+            history: []
+        };
     }
     
-    // Логируем операцию
+    const user = users[userId];
+    
+    // Логируем операцию из WebApp
     if (operation) {
         user.history.push({
             ...operation,
@@ -337,15 +338,16 @@ app.post('/api/user/:userId/sync', (req, res) => {
         });
     }
     
-    // Обновляем баланс (если передан баланс, используем его)
-    if (balance !== undefined) {
+    // Обновляем баланс из WebApp
+    if (balance !== undefined && balance !== null) {
+        const oldBalance = user.balance;
         user.balance = parseInt(balance);
+        
+        console.log(`🔄 Баланс обновлен: ${oldBalance} → ${user.balance}`);
     }
     
     user.lastSync = new Date().toISOString();
     saveData();
-    
-    console.log(`Синхронизация: ${userId} - ${user.balance} ₽`);
     
     res.json({
         success: true,
@@ -354,8 +356,39 @@ app.post('/api/user/:userId/sync', (req, res) => {
             firstName: user.firstName,
             balance: user.balance,
             lastSync: user.lastSync
-        }
+        },
+        message: 'Data synchronized successfully'
     });
+});
+
+// Обновить баланс (Server → WebApp)
+app.post('/api/user/:userId/update', (req, res) => {
+    const userId = req.params.userId;
+    const { amount } = req.body;
+    
+    console.log(`📡 POST /api/user/${userId}/update`, { amount });
+    
+    if (!users[userId]) {
+        return res.status(404).json({
+            success: false,
+            error: 'User not found'
+        });
+    }
+    
+    const result = updateBalance(userId, parseInt(amount), 'api');
+    
+    if (result.success) {
+        res.json({
+            success: true,
+            balance: result.newBalance,
+            message: 'Balance updated'
+        });
+    } else {
+        res.status(400).json({
+            success: false,
+            error: result.message
+        });
+    }
 });
 
 // Статистика
@@ -368,40 +401,33 @@ app.get('/api/stats', (req, res) => {
         stats: {
             totalUsers: userCount,
             totalBalance: totalBalance,
-            serverTime: new Date().toISOString()
+            serverTime: new Date().toISOString(),
+            uptime: process.uptime()
         }
     });
 });
 
-// Проверка статуса сервера
-app.get('/api/status', (req, res) => {
-    res.json({
-        success: true,
-        status: 'running',
-        users: Object.keys(users).length,
-        timestamp: new Date().toISOString()
-    });
-});
+// ========== ЗАПУСК СЕРВЕРА ==========
 
-// Запуск сервера
 loadData();
+
 app.listen(PORT, () => {
     console.log(`🚀 Сервер запущен: http://localhost:${PORT}`);
+    console.log(`🌐 CORS разрешен для: ${WEBAPP_ORIGIN}`);
     console.log(`👥 Пользователей: ${Object.keys(users).length}`);
-    console.log(`\nAPI эндпоинты:`);
+    console.log(`\n📡 API эндпоинты:`);
+    console.log(`  GET  /api/ping - проверка сервера`);
     console.log(`  GET  /api/user/:userId - данные пользователя`);
-    console.log(`  POST /api/user/:userId/sync - синхронизация`);
+    console.log(`  POST /api/user/:userId/sync - синхронизация из WebApp`);
+    console.log(`  POST /api/user/:userId/update - обновить баланс`);
     console.log(`  GET  /api/stats - статистика`);
-    console.log(`  GET  /api/status - статус сервера`);
 });
 
 // Обработка ошибок
 bot.on('polling_error', (error) => {
-    console.error('Bot error:', error.message);
+    console.error('Bot polling error:', error.message);
 });
 
-// Обработка входящих сообщений
-bot.on('message', (msg) => {
-    // Логирование всех входящих сообщений
-    console.log(`📩 Сообщение от ${msg.from.id}: ${msg.text}`);
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
 });
