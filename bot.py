@@ -194,17 +194,17 @@ def add_initial_data(cursor):
     # Кейсы
     cases = [
         ("Кейс с Едой", 100, "🍎", "Содержит разнообразную еду и напитки", 
-        '{"common": 70, "uncommon": 30}', "assets/textures/cases/case_food.png"),
+         '{"common": 70, "uncommon": 30}', "case_food.png"),
         ("Ресурсный Кейс", 250, "⛏️", "Руды, минералы и базовые ресурсы", 
-        '{"common": 50, "uncommon": 40, "rare": 10}', "assets/textures/cases/case_resources.png"),
+         '{"common": 50, "uncommon": 40, "rare": 10}', "case_resources.png"),
         ("Оружейный Кейс", 500, "⚔️", "Оружие, броня и инструменты", 
-        '{"uncommon": 40, "rare": 50, "epic": 10}', "assets/textures/cases/case_weapons.png"),
+         '{"uncommon": 40, "rare": 50, "epic": 10}', "case_weapons.png"),
         ("Легендарный Кейс", 1000, "🌟", "Уникальные и легендарные предметы", 
-        '{"rare": 30, "epic": 50, "legendary": 20}', "assets/textures/cases/case_legendary.png"),
+         '{"rare": 30, "epic": 50, "legendary": 20}', "case_legendary.png"),
         ("Донат Кейс", 5000, "👑", "Эксклюзивные донат предметы", 
-        '{"epic": 40, "legendary": 60}', "assets/textures/cases/case_donate.png"),
+         '{"epic": 40, "legendary": 60}', "case_donate.png"),
         ("Случайный Кейс", 750, "🧰", "Микс из всех категорий", 
-        '{"common": 30, "uncommon": 40, "rare": 20, "epic": 10}', "assets/textures/cases/case_random.png"),
+         '{"common": 30, "uncommon": 40, "rare": 20, "epic": 10}', "case_random.png"),
     ]
     
     cursor.executemany(
