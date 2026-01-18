@@ -1,3 +1,4 @@
+
 // Инициализация Telegram Web App
 const tg = window.Telegram?.WebApp;
 if (tg) {
@@ -210,7 +211,7 @@ function getTextureNameFromUrl(url) {
     return filename.replace('.png', '');
 }
 
-// Получение HTML для изображения кейса
+// Получение HTML для изображения кейса - ИЗМЕНЕНО: убрано вращение текстуры
 function getCaseImageHTML(caseItem) {
     const textureName = getTextureNameFromUrl(caseItem.texture_url);
     
@@ -602,7 +603,7 @@ function updateUI() {
     renderInventory();
 }
 
-// Отрисовка кейсов с PNG
+// Отрисовка кейсов с PNG - ИЗМЕНЕНО: добавлены touch-события
 function renderCases() {
     console.log('Отрисовка кейсов...');
     if (!elements.casesGrid) return;
@@ -641,7 +642,42 @@ function renderCases() {
             </div>
         `;
         
-        caseCard.addEventListener('click', () => openCaseModal(caseItem));
+        // Добавляем обработчики для touch устройств
+        let touchStartTime = 0;
+        let touchStartX = 0;
+        let touchStartY = 0;
+        
+        caseCard.addEventListener('touchstart', (e) => {
+            touchStartTime = Date.now();
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            e.preventDefault();
+        }, { passive: false });
+        
+        caseCard.addEventListener('touchend', (e) => {
+            const touchEndTime = Date.now();
+            const touchEndX = e.changedTouches[0].clientX;
+            const touchEndY = e.changedTouches[0].clientY;
+            
+            // Проверяем, был ли это тап (а не свайп)
+            const timeDiff = touchEndTime - touchStartTime;
+            const xDiff = Math.abs(touchEndX - touchStartX);
+            const yDiff = Math.abs(touchEndY - touchStartY);
+            
+            if (timeDiff < 500 && xDiff < 10 && yDiff < 10) {
+                openCaseModal(caseItem);
+            }
+            e.preventDefault();
+        }, { passive: false });
+        
+        // Оставляем обработчик клика для десктопов
+        caseCard.addEventListener('click', (e) => {
+            // Проверяем, не было ли это событие вызвано touch событием
+            if (Date.now() - touchStartTime > 100) {
+                openCaseModal(caseItem);
+            }
+        });
+        
         elements.casesGrid.appendChild(caseCard);
     });
     
@@ -1287,16 +1323,41 @@ function hideLoading() {
     }
 }
 
-// Инициализация обработчиков событий
+// Инициализация обработчиков событий - ИЗМЕНЕНО: добавлена обработка touch для кнопок
 function initEventListeners() {
     console.log('Настройка обработчиков событий...');
     
+    // Вспомогательная функция для добавления touch-обработчиков
+    function addTouchHandlers(element, handler) {
+        let touchStartTime = 0;
+        
+        element.addEventListener('touchstart', (e) => {
+            touchStartTime = Date.now();
+            e.preventDefault();
+        }, { passive: false });
+        
+        element.addEventListener('touchend', (e) => {
+            if (Date.now() - touchStartTime < 500) {
+                handler(e);
+            }
+            e.preventDefault();
+        }, { passive: false });
+        
+        element.addEventListener('click', (e) => {
+            // Для десктопов
+            if (Date.now() - touchStartTime > 100) {
+                handler(e);
+            }
+        });
+    }
+    
+    // Обработчики для всех кнопок
     if (elements.inventoryBtn) {
-        elements.inventoryBtn.addEventListener('click', openInventoryModal);
+        addTouchHandlers(elements.inventoryBtn, openInventoryModal);
     }
     
     if (elements.closeModal) {
-        elements.closeModal.addEventListener('click', () => {
+        addTouchHandlers(elements.closeModal, () => {
             if (isRouletteActive) {
                 if (confirm('Рулетка все еще активна. Вы уверены, что хотите отменить открытие?')) {
                     isRouletteActive = false;
@@ -1313,20 +1374,38 @@ function initEventListeners() {
     }
     
     if (elements.closeInventory) {
-        elements.closeInventory.addEventListener('click', () => hideModal(elements.inventoryModal));
+        addTouchHandlers(elements.closeInventory, () => hideModal(elements.inventoryModal));
     }
     
     if (elements.closeResult) {
-        elements.closeResult.addEventListener('click', () => hideModal(elements.resultModal));
+        addTouchHandlers(elements.closeResult, () => hideModal(elements.resultModal));
     }
     
     if (elements.openCaseBtn) {
-        elements.openCaseBtn.addEventListener('click', openCase);
+        addTouchHandlers(elements.openCaseBtn, openCase);
     }
     
     // Закрытие модальных окон по клику на overlay
     document.querySelectorAll('.modal-overlay').forEach(overlay => {
         overlay.addEventListener('click', (e) => {
+            if (e.target === overlay && !isOpening) {
+                if (overlay === elements.caseModal && isRouletteActive) {
+                    if (confirm('Рулетка все еще активна. Вы уверены, что хотите отменить открытие?')) {
+                        isRouletteActive = false;
+                        hideModal(elements.caseModal);
+                        if (userData.balance >= currentCase?.price) {
+                            elements.openCaseBtn.disabled = false;
+                            elements.openCaseBtn.innerHTML = `⛏️ Открыть за ${currentCase?.price || 0} 💎`;
+                        }
+                    }
+                    return;
+                }
+                hideModal(overlay);
+            }
+        });
+        
+        // Также добавляем touch обработчик для overlay
+        overlay.addEventListener('touchend', (e) => {
             if (e.target === overlay && !isOpening) {
                 if (overlay === elements.caseModal && isRouletteActive) {
                     if (confirm('Рулетка все еще активна. Вы уверены, что хотите отменить открытие?')) {
