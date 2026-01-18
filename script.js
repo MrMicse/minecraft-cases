@@ -540,7 +540,7 @@ async function sendDataToBot(action, data) {
 // Альтернативный метод через API (если Web App не работает)
 async function sendViaAPI(action, data) {
     try {
-        const API_URL = 'https://ваш-проект.railway.app/api'; // Замените на ваш URL Railway
+        const API_URL = 'minecraft-cases-production.up.railway.app'; // Замените на ваш URL Railway
         
         const response = await fetch(`${API_URL}/${action}`, {
             method: 'POST',

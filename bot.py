@@ -518,7 +518,7 @@ async def cmd_start(message: Message):
         inline_keyboard=[
             [InlineKeyboardButton(
                 text="⛏️ Открыть кейсы",
-                web_app=WebAppInfo(url="https://ваш-домен.railway.app")
+                web_app=WebAppInfo(url="minecraft-cases-production.up.railway.app")
             )],
             [InlineKeyboardButton(text="💰 Баланс", callback_data="balance"),
              InlineKeyboardButton(text="🎒 Инвентарь", callback_data="inventory")]
