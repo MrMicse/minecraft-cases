@@ -9,8 +9,9 @@ from dotenv import load_dotenv
 
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import (
-    Message, InlineKeyboardMarkup, 
-    InlineKeyboardButton, WebAppInfo, CallbackQuery
+    Message, InlineKeyboardMarkup,
+    InlineKeyboardButton, WebAppInfo, CallbackQuery,
+    MenuButtonWebApp
 )
 from aiogram.filters import Command
 from aiogram.enums import ParseMode
@@ -507,6 +508,7 @@ async def cmd_start(message: Message):
     print(f"📥 Получена команда /start от пользователя {message.from_user.id}")
     
     user = get_user(message.from_user.id)
+    cases_opened = get_cases_opened_count(user["user_id"])
     
     # Обновляем время последнего входа
     conn = sqlite3.connect(DB_PATH)
@@ -518,14 +520,55 @@ async def cmd_start(message: Message):
     conn.commit()
     conn.close()
     
-    keyboard = InlineKeyboardMarkup(
+    keyboard = build_main_menu_keyboard()
+    
+    await bot.set_chat_menu_button(
+        chat_id=message.chat.id,
+        menu_button=MenuButtonWebApp(
+            text="⛏️ Minecraft Кейсы",
+            web_app=WebAppInfo(url="https://mrmicse.github.io/minecraft-cases/")
+        )
+    )
+    
+    text = build_main_menu_text(message.from_user.first_name, user, cases_opened)
+    
+    await message.answer(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
+    print(f"📤 Отправлен ответ пользователю {message.from_user.id}")
+
+
+def get_cases_opened_count(user_id: int) -> int:
+    """Получаем статистику открытий кейсов для пользователя."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT COUNT(*) FROM opening_history WHERE user_id = ?",
+        (user_id,)
+    )
+    cases_opened = cursor.fetchone()[0]
+    conn.close()
+    return cases_opened
+
+
+def build_main_menu_text(first_name: str, user: Dict, cases_opened: int) -> str:
+    """Формирование текста главного меню."""
+    return f"""
+⛏️ <b>Добро пожаловать в Minecraft Case Opening, {first_name}!</b>
+
+💰 <b>Баланс:</b> {user['balance']} 💎
+🎮 <b>Уровень:</b> {user['level']}
+⭐ <b>Опыт:</b> {user['experience']} XP
+
+🎁 <b>Ежедневный бонус:</b> 100 💎 (/daily)
+🏆 <b>Открыто кейсов:</b> {cases_opened} (/stats)
+
+<code>Открывайте веб-приложение через кнопку под строкой ввода.</code>
+    """
+
+
+def build_main_menu_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура главного меню."""
+    return InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="⛏️ Открыть Minecraft Кейсы",
-                    web_app=WebAppInfo(url="https://mrmicse.github.io/minecraft-cases/")
-                )
-            ],
             [
                 InlineKeyboardButton(text="👤 Профиль", callback_data="profile"),
                 InlineKeyboardButton(text="🎒 Инвентарь", callback_data="inventory")
@@ -536,32 +579,102 @@ async def cmd_start(message: Message):
             ]
         ]
     )
-    
-    # Получаем статистику открытий
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT COUNT(*) FROM opening_history WHERE user_id = ?",
-        (user["user_id"],)
+
+
+def build_back_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура с кнопкой возврата."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="↩️ Вернуться назад", callback_data="back_to_menu")]
+        ]
     )
-    cases_opened = cursor.fetchone()[0]
-    conn.close()
-    
+
+
+@router.callback_query(F.data == "profile")
+async def handle_profile(callback: CallbackQuery):
+    """Показ профиля пользователя."""
+    user = get_user(callback.from_user.id)
+    inventory = get_inventory(user["user_id"])
+    cases_opened = get_cases_opened_count(user["user_id"])
+
     text = f"""
-⛏️ <b>Добро пожаловать в Minecraft Case Opening, {message.from_user.first_name}!</b>
+👤 <b>Профиль игрока</b>
 
-💰 <b>Баланс:</b> {user['balance']} 💎
-🎮 <b>Уровень:</b> {user['level']}
-⭐ <b>Опыт:</b> {user['experience']} XP
-
-🎁 <b>Ежедневный бонус:</b> 100 💎 (/daily)
-🏆 <b>Открыто кейсов:</b> {cases_opened} (/stats)
-
-<code>Нажмите кнопку ниже чтобы открыть веб-приложение!</code>
+Имя: {callback.from_user.first_name}
+Баланс: {user['balance']} 💎
+Уровень: {user['level']}
+Опыт: {user['experience']} XP
+Открыто кейсов: {cases_opened}
+Предметов в инвентаре: {len(inventory)}
     """
-    
-    await message.answer(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
-    print(f"📤 Отправлен ответ пользователю {message.from_user.id}")
+
+    await callback.message.edit_text(text, reply_markup=build_back_keyboard(), parse_mode=ParseMode.HTML)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "inventory")
+async def handle_inventory(callback: CallbackQuery):
+    """Показ инвентаря пользователя."""
+    user = get_user(callback.from_user.id)
+    inventory = get_inventory(user["user_id"])
+
+    if inventory:
+        items_preview = "\n".join(
+            f"• {item['icon']} {item['name']} — {item['rarity'].capitalize()} ({item['price']} 💎)"
+            for item in inventory[:8]
+        )
+        more_text = "\n\n…и другие предметы." if len(inventory) > 8 else ""
+    else:
+        items_preview = "Инвентарь пуст. Откройте кейс, чтобы получить предметы!"
+        more_text = ""
+
+    text = f"""
+🎒 <b>Инвентарь</b>
+
+{items_preview}{more_text}
+    """
+
+    await callback.message.edit_text(text, reply_markup=build_back_keyboard(), parse_mode=ParseMode.HTML)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "deposit")
+async def handle_deposit(callback: CallbackQuery):
+    """Показ информации о пополнении."""
+    text = """
+💰 <b>Пополнение баланса</b>
+
+В ближайшее время здесь появятся удобные способы пополнения.
+Следите за обновлениями!
+    """
+
+    await callback.message.edit_text(text, reply_markup=build_back_keyboard(), parse_mode=ParseMode.HTML)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "trade")
+async def handle_trade(callback: CallbackQuery):
+    """Показ информации об обмене."""
+    text = """
+🔄 <b>Обмен предметов</b>
+
+Скоро вы сможете обменивать предметы и получать бонусы.
+Пока что возвращайтесь в меню!
+    """
+
+    await callback.message.edit_text(text, reply_markup=build_back_keyboard(), parse_mode=ParseMode.HTML)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "back_to_menu")
+async def handle_back_to_menu(callback: CallbackQuery):
+    """Возврат к главному меню."""
+    user = get_user(callback.from_user.id)
+    cases_opened = get_cases_opened_count(user["user_id"])
+    text = build_main_menu_text(callback.from_user.first_name, user, cases_opened)
+
+    await callback.message.edit_text(text, reply_markup=build_main_menu_keyboard(), parse_mode=ParseMode.HTML)
+    await callback.answer()
 
 @router.message(Command("balance"))
 async def cmd_balance(message: Message):
