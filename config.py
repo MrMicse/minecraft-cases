@@ -10,9 +10,7 @@ class Config:
     BOT_TOKEN: str = os.getenv('BOT_TOKEN')
     ADMIN_ID: int = int(os.getenv('ADMIN_ID', 0))
     DEBUG: bool = os.getenv('DEBUG', 'False').lower() == 'true'
-    # Postgres (Railway). Пример:
-    # postgresql://postgres:password@host:port/railway
-    DATABASE_URL: str = os.getenv('DATABASE_URL', '')
+    DATABASE_URL: str = os.getenv('DATABASE_URL', 'sqlite:///minecraft_cases.db')
     
     # Настройки Web App
     WEB_APP_URL: str = os.getenv('WEB_APP_URL', 'https://mrmicse.github.io/minecraft-cases/')
@@ -27,8 +25,6 @@ class Config:
     def validate(self):
         if not self.BOT_TOKEN:
             raise ValueError("❌ BOT_TOKEN не найден в .env файле!")
-        if not self.DATABASE_URL:
-            raise ValueError("❌ DATABASE_URL не найден. Укажи Postgres URL (Railway) в .env")
         if not self.ADMIN_ID:
             print("⚠️  ADMIN_ID не указан. Админ панель будет недоступна.")
         return self

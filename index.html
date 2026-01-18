@@ -2,325 +2,132 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>💰 Баланс | Telegram Bot</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Case Opening</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        }
-        
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 20px;
-            color: white;
-        }
-        
-        .container {
-            max-width: 450px;
-            margin: 0 auto;
-        }
-        
-        .header {
-            text-align: center;
-            margin-bottom: 20px;
-            padding: 15px;
-        }
-        
-        .header h1 {
-            font-size: 24px;
-            margin-bottom: 5px;
-        }
-        
-        .header p {
-            opacity: 0.9;
-            font-size: 14px;
-        }
-        
-        .user-info {
-            background: rgba(255, 255, 255, 0.15);
-            padding: 15px;
-            border-radius: 15px;
-            margin-bottom: 15px;
-            backdrop-filter: blur(10px);
-        }
-        
-        .user-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-            font-size: 15px;
-        }
-        
-        .user-label {
-            opacity: 0.8;
-        }
-        
-        .user-value {
-            font-weight: 500;
-        }
-        
-        .balance-card {
-            background: white;
-            color: #333;
-            padding: 25px;
-            border-radius: 20px;
-            text-align: center;
-            margin-bottom: 20px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-        }
-        
-        .balance-label {
-            font-size: 14px;
-            color: #666;
-            margin-bottom: 5px;
-        }
-        
-        .balance-amount {
-            font-size: 48px;
-            font-weight: bold;
-            margin: 10px 0;
-            color: #2d3748;
-        }
-        
-        .controls {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
-            margin-bottom: 15px;
-        }
-        
-        .btn {
-            padding: 16px;
-            border: none;
-            border-radius: 12px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-        }
-        
-        .btn span {
-            font-size: 18px;
-        }
-        
-        .btn-deposit {
-            background: linear-gradient(135deg, #4CAF50, #2E7D32);
-            color: white;
-        }
-        
-        .btn-withdraw {
-            background: linear-gradient(135deg, #f44336, #c62828);
-            color: white;
-        }
-        
-        .btn-sync {
-            background: linear-gradient(135deg, #2196F3, #1565C0);
-            color: white;
-        }
-        
-        .btn-reset {
-            background: linear-gradient(135deg, #FF9800, #EF6C00);
-            color: white;
-        }
-        
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-        }
-        
-        .btn:active {
-            transform: translateY(0);
-        }
-        
-        .message {
-            display: none;
-            background: rgba(255, 255, 255, 0.15);
-            padding: 12px;
-            border-radius: 10px;
-            margin: 15px 0;
-            text-align: center;
-            backdrop-filter: blur(10px);
-        }
-        
-        .message.success {
-            background: rgba(76, 175, 80, 0.2);
-            border-left: 4px solid #4CAF50;
-        }
-        
-        .message.error {
-            background: rgba(244, 67, 54, 0.2);
-            border-left: 4px solid #f44336;
-        }
-        
-        .loading {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.7);
-            justify-content: center;
-            align-items: center;
-            flex-direction: column;
-            z-index: 1000;
-        }
-        
-        .spinner {
-            border: 4px solid rgba(255, 255, 255, 0.3);
-            border-top: 4px solid white;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            animation: spin 1s linear infinite;
-            margin-bottom: 15px;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        
-        .history {
-            margin-top: 20px;
-        }
-        
-        .history-title {
-            font-size: 18px;
-            margin-bottom: 10px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .history-list {
-            max-height: 200px;
-            overflow-y: auto;
-        }
-        
-        .history-item {
-            background: rgba(255, 255, 255, 0.1);
-            padding: 12px;
-            border-radius: 10px;
-            margin-bottom: 8px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            backdrop-filter: blur(10px);
-        }
-        
-        .history-time {
-            font-size: 13px;
-            opacity: 0.8;
-        }
-        
-        .history-type {
-            font-weight: 600;
-            margin-top: 3px;
-        }
-        
-        .positive {
-            color: #4CAF50;
-        }
-        
-        .negative {
-            color: #f44336;
-        }
-        
-        .history-balance {
-            font-weight: bold;
-            font-size: 16px;
-        }
-        
-        .empty-history {
-            text-align: center;
-            padding: 20px;
-            opacity: 0.7;
-            font-style: italic;
-        }
-        
-        /* Адаптивность */
-        @media (max-width: 480px) {
-            .controls {
-                grid-template-columns: 1fr;
-            }
-            
-            .balance-amount {
-                font-size: 40px;
-            }
-            
-            .btn {
-                padding: 14px;
-            }
-        }
-    </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>💰 Управление балансом</h1>
-            <p>Синхронизация с Telegram ботом</p>
-        </div>
-        
-        <div class="user-info">
-            <div class="user-row">
-                <div class="user-label">👤 Пользователь:</div>
-                <div class="user-value" id="username">...</div>
+    <div class="app-container">
+        <!-- Шапка -->
+        <header class="header">
+            <div class="logo">
+                <span class="logo-icon">⛏️</span>
+                <h1>Minecraft Cases</h1>
             </div>
-            <div class="user-row">
-                <div class="user-label">🆔 ID:</div>
-                <div class="user-value" id="userid">...</div>
+            <div class="user-info">
+                <div class="balance">
+                    <span class="balance-icon">💎</span>
+                    <span id="user-balance">1000</span>
+                </div>
+                <button class="btn-inventory" id="inventory-btn">🎒</button>
+            </div>
+        </header>
+
+        <!-- Основной контент -->
+        <main class="main-content">
+            <section class="cases-grid" id="cases-grid">
+                <!-- Кейсы будут добавлены через JS -->
+            </section>
+        </main>
+
+        <!-- Модальное окно открытия кейса -->
+        <div class="modal-overlay" id="case-modal">
+            <div class="modal">
+                <div class="modal-header">
+                    <h2 id="case-name">Minecraft Кейс</h2>
+                    <button class="close-modal" id="close-modal">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <!-- PNG изображение кейса -->
+                    <div class="modal-case-texture"></div>
+                    
+                    <!-- Рулетка -->
+                    <div class="roulette-container" id="roulette-container">
+                        <div class="roulette-wheel-wrapper">
+                            <div class="center-indicator">
+                                <div class="indicator-arrow">▼</div>
+                                <div class="indicator-line"></div>
+                            </div>
+                            <!-- Визуальная зона для понимания где может остановиться -->
+                            <div class="center-zone"></div>
+                            <div class="items-track" id="items-track">
+                                <!-- Предметы будут добавлены через JS -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="case-info">
+                        <p class="case-price">Цена: <span id="case-price-value">100</span> 💎</p>
+                        <button class="btn-open-case" id="open-case-btn">
+                            ⛏️ Открыть за <span id="open-price">100</span> 💎
+                        </button>
+                        <p class="case-description" id="case-description"></p>
+                        <div class="case-items-preview-modal">
+                            <!-- Предметы для предпросмотра -->
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
-        
-        <div class="balance-card">
-            <div class="balance-label">Текущий баланс</div>
-            <div class="balance-amount" id="balance">0</div>
-            <div style="color: #666; font-size: 14px;">российских рублей</div>
-        </div>
-        
-        <div class="controls">
-            <button class="btn btn-deposit" onclick="changeBalance(100)">
-                <span>➕</span> +100 ₽
-            </button>
-            <button class="btn btn-withdraw" onclick="changeBalance(-100)">
-                <span>➖</span> -100 ₽
-            </button>
-            <button class="btn btn-sync" onclick="syncButton()">
-                <span>🔄</span> Синхронизировать
-            </button>
-            <button class="btn btn-reset" onclick="resetButton()">
-                <span>🔄</span> Сбросить
-            </button>
-        </div>
-        
-        <div class="message" id="message"></div>
-        
-        <div class="loading" id="loading">
-            <div class="spinner"></div>
-            <div style="color: white;">Загрузка...</div>
-        </div>
-        
-        <div class="history">
-            <div class="history-title">
-                <span>📊 Последние операции</span>
-                <span style="font-size: 14px; opacity: 0.8;">Всего: <span id="historyCount">0</span></span>
+
+        <!-- Модальное окно инвентаря -->
+        <div class="modal-overlay" id="inventory-modal">
+            <div class="modal inventory-modal">
+                <div class="modal-header">
+                    <h2>🎒 Инвентарь</h2>
+                    <button class="close-modal" id="close-inventory">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="inventory-grid" id="inventory-grid">
+                        <!-- Предметы будут добавлены через JS -->
+                    </div>
+                </div>
             </div>
-            <div class="history-list" id="historyList">
-                <div class="empty-history">История операций пуста</div>
+        </div>
+
+        <!-- Модальное окно результата -->
+        <div class="modal-overlay" id="result-modal">
+            <div class="modal result-modal">
+                <div class="result-header">
+                    <h2>🎉 Поздравляем!</h2>
+                </div>
+                <div class="result-body">
+                    <div class="result-item-display">
+                        <div class="result-item-icon" id="result-icon">💎</div>
+                        <div class="particle-effect"></div>
+                    </div>
+                    <div class="result-info">
+                        <h3 id="result-item-name">Алмаз</h3>
+                        <div class="item-rarity common" id="result-item-rarity">Обычный</div>
+                        <p class="item-price">💎 Цена: <span id="result-item-price">50</span></p>
+                        <div class="result-stats">
+                            <p>Новый баланс: <span id="new-balance">900</span> 💎</p>
+                        </div>
+                        <button class="btn-close-result" id="close-result">Продолжить</button>
+                    </div>
+                </div>
             </div>
+        </div>
+
+        <!-- Экран загрузки -->
+        <div class="loading-overlay" id="loading">
+            <div class="loading-spinner"></div>
+            <p>Загрузка...</p>
+        </div>
+
+        <!-- Фоновые элементы Minecraft -->
+        <div class="mc-background">
+            <div class="grass-block"></div>
+            <div class="dirt-block"></div>
+            <div class="stone-block"></div>
+            <div class="diamond-ore"></div>
         </div>
     </div>
-    
-    <script src="webapp.js"></script>
+
+    <script src="script.js"></script>
 </body>
 </html>

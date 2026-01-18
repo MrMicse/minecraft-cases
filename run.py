@@ -33,9 +33,7 @@ def check_env():
         
         env_template = """BOT_TOKEN=ваш_токен_бота
 ADMIN_ID=ваш_id_администратора
-# Railway Postgres URL (пример):
-# postgresql://postgres:password@host:port/railway
-DATABASE_URL=postgresql://...
+DATABASE_URL=sqlite:///minecraft_cases.db
 DEBUG=False
 WEB_APP_URL=https://ваш-username.github.io/minecraft-cases/
 """
