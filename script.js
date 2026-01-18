@@ -168,7 +168,7 @@ async function tryServerSync() {
     console.log('🔄 Попытка синхронизации с сервером...');
     
     try {
-        const response = await sendDataToBot('init', {});
+        const response = await sendDataToBot('sync_data', {});
         
         if (response && response.success) {
             console.log('✅ Синхронизация с сервером успешна');
@@ -177,27 +177,6 @@ async function tryServerSync() {
             // Сохраняем данные с сервера
             serverUserData = response.user;
             serverCasesData = response.cases || [];
-            
-            // Применяем данные с сервера (баланс - приоритет сервера)
-            if (serverUserData) {
-                userData.balance = serverUserData.balance;
-                userData.experience = serverUserData.experience;
-                userData.level = serverUserData.level;
-            }
-            
-            // Кейсы берем с сервера если есть
-            if (serverCasesData.length > 0) {
-                casesData = serverCasesData;
-                console.log(`✅ Загружено ${casesData.length} кейсов с сервера`);
-            }
-            
-            // Инвентарь берем с сервера если есть
-            if (response.inventory) {
-                inventoryData = response.inventory;
-            }
-            
-            // Сохраняем объединенные данные в localStorage
-            saveToLocalStorage();
             
             // Обновляем отображение серверных данных
             if (serverUserData) {
@@ -217,6 +196,41 @@ async function tryServerSync() {
     } catch (error) {
         console.error('❌ Ошибка соединения с сервером:', error);
         lastSyncStatus = 'error';
+        return false;
+    }
+}
+
+// Обновить баланс на сервере
+async function updateBalanceOnServer() {
+    console.log('📤 Отправка баланса на сервер...');
+    
+    try {
+        // Отправляем текущий баланс на сервер
+        const response = await sendDataToBot('update_balance', {
+            balance: userData.balance,
+            experience: userData.experience,
+            level: userData.level
+        });
+        
+        if (response && response.success) {
+            console.log('✅ Баланс успешно обновлен на сервере');
+            console.log('Ответ сервера:', response);
+            
+            // Обновляем серверные данные
+            serverUserData = response.user || serverUserData;
+            
+            if (serverUserData) {
+                elements.serverBalance.textContent = serverUserData.balance;
+            }
+            
+            return true;
+        } else {
+            console.error('❌ Ошибка обновления баланса:', response?.error);
+            return false;
+        }
+        
+    } catch (error) {
+        console.error('❌ Ошибка соединения:', error);
         return false;
     }
 }
@@ -286,7 +300,7 @@ async function sendDataToBot(action, data) {
                 window._botResponseHandler = null;
             }
             resolve(handleDemoMode(action, data));
-        }, 3000);
+        }, 5000);
     });
 }
 
@@ -296,6 +310,7 @@ function handleDemoMode(action, data) {
     
     switch (action) {
         case 'init':
+        case 'sync_data':
             return {
                 success: true,
                 user: {
@@ -311,6 +326,18 @@ function handleDemoMode(action, data) {
                     daily_bonus: 100,
                     version: '1.0.0'
                 }
+            };
+            
+        case 'update_balance':
+            // В демо-режиме просто возвращаем обновленные данные
+            return {
+                success: true,
+                user: {
+                    balance: data.balance || 10000,
+                    experience: data.experience || 0,
+                    level: data.level || 1
+                },
+                message: 'Баланс обновлен (демо-режим)'
             };
             
         default:
@@ -420,44 +447,94 @@ function showSyncStatus(type, message) {
 }
 
 // Тестовые функции
-function addBalance(amount = 1000) {
+async function addBalance(amount = 1000) {
     userData.balance += amount;
     saveToLocalStorage();
     updateUI();
+    
     console.log(`💰 Баланс увеличен на ${amount}. Новый баланс: ${userData.balance}`);
     showSyncStatus('success', `Баланс увеличен на ${amount} 💎`);
+    
+    // Пробуем отправить на сервер
+    const success = await updateBalanceOnServer();
+    if (success) {
+        showSyncStatus('success', `Баланс увеличен на ${amount} 💎 и отправлен на сервер`);
+    } else {
+        showSyncStatus('warning', `Баланс увеличен локально, но не отправлен на сервер`);
+    }
 }
 
-function removeBalance(amount = 1000) {
+async function removeBalance(amount = 1000) {
     if (userData.balance >= amount) {
         userData.balance -= amount;
         saveToLocalStorage();
         updateUI();
+        
         console.log(`💰 Баланс уменьшен на ${amount}. Новый баланс: ${userData.balance}`);
-        showSyncStatus('success', `Баланс уменьшен на ${amount} 💎`);
+        
+        // Пробуем отправить на сервер
+        const success = await updateBalanceOnServer();
+        if (success) {
+            showSyncStatus('success', `Баланс уменьшен на ${amount} 💎 и отправлен на сервер`);
+        } else {
+            showSyncStatus('warning', `Баланс уменьшен локально, но не отправлен на сервер`);
+        }
     } else {
         console.log('❌ Недостаточно средств');
         showSyncStatus('error', 'Недостаточно средств!');
     }
 }
 
-function resetBalance() {
+async function resetBalance() {
     userData.balance = 10000;
     saveToLocalStorage();
     updateUI();
     console.log(`💰 Баланс сброшен до ${userData.balance}`);
-    showSyncStatus('success', 'Баланс сброшен до 10000 💎');
+    
+    // Пробуем отправить на сервер
+    const success = await updateBalanceOnServer();
+    if (success) {
+        showSyncStatus('success', 'Баланс сброшен до 10000 💎 и отправлен на сервер');
+    } else {
+        showSyncStatus('warning', 'Баланс сброшен локально, но не отправлен на сервер');
+    }
 }
 
 async function forceSync() {
     showSyncStatus('warning', 'Синхронизация...');
-    const success = await tryServerSync();
     
-    if (success) {
-        updateUI();
-        showSyncStatus('success', 'Синхронизация успешна!');
+    // Сначала отправляем наш баланс на сервер
+    const updateSuccess = await updateBalanceOnServer();
+    
+    // Затем получаем обновленные данные с сервера
+    const syncSuccess = await tryServerSync();
+    
+    if (updateSuccess && syncSuccess) {
+        // После успешной отправки на сервер, получаем обновленные данные
+        // и обновляем локальные данные с сервера
+        if (serverUserData) {
+            userData.balance = serverUserData.balance;
+            userData.experience = serverUserData.experience;
+            userData.level = serverUserData.level;
+            saveToLocalStorage();
+            updateUI();
+        }
+        
+        showSyncStatus('success', 'Двусторонняя синхронизация успешна!');
+    } else if (updateSuccess) {
+        showSyncStatus('warning', 'Баланс отправлен на сервер, но не удалось получить ответ');
+    } else if (syncSuccess) {
+        // Если не удалось отправить, но удалось получить - берем данные с сервера
+        if (serverUserData) {
+            userData.balance = serverUserData.balance;
+            userData.experience = serverUserData.experience;
+            userData.level = serverUserData.level;
+            saveToLocalStorage();
+            updateUI();
+        }
+        showSyncStatus('warning', 'Получены данные с сервера, но не удалось отправить изменения');
     } else {
-        showSyncStatus('error', 'Ошибка синхронизации');
+        showSyncStatus('error', 'Ошибка двусторонней синхронизации');
     }
     
     updateSyncStatus();
@@ -471,7 +548,7 @@ function clearStorage() {
     showSyncStatus('warning', 'localStorage очищен');
 }
 
-function simulateOpenCase() {
+async function simulateOpenCase() {
     const casePrice = 500;
     if (userData.balance >= casePrice) {
         userData.balance -= casePrice;
@@ -495,7 +572,14 @@ function simulateOpenCase() {
         saveToLocalStorage();
         
         console.log(`🎁 Симулировано открытие кейса за ${casePrice}. Новый баланс: ${userData.balance}`);
-        showSyncStatus('success', `Кейс открыт! Получен: ${randomItem.name}`);
+        
+        // Пробуем отправить на сервер
+        const success = await updateBalanceOnServer();
+        if (success) {
+            showSyncStatus('success', `Кейс открыт! Получен: ${randomItem.name}. Баланс обновлен на сервере`);
+        } else {
+            showSyncStatus('warning', `Кейс открыт локально, но не отправлен на сервер`);
+        }
     } else {
         console.log('❌ Недостаточно средств для симуляции');
         showSyncStatus('error', 'Недостаточно средств!');
@@ -577,15 +661,6 @@ function initEventListeners() {
     if (elements.simulateOpenBtn) {
         elements.simulateOpenBtn.addEventListener('click', simulateOpenCase);
     }
-    
-    // Закрытие модальных окон по клику на overlay
-    document.querySelectorAll('.modal-overlay').forEach(overlay => {
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) {
-                hideModal(overlay);
-            }
-        });
-    });
     
     console.log('✅ Все обработчики настроены');
 }

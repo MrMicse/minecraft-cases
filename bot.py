@@ -419,6 +419,28 @@ async def cmd_balance(message: Message):
     await message.answer(text, parse_mode=ParseMode.HTML)
 
 
+@router.message(Command("balance_update"))
+async def cmd_balance_update(message: Message):
+    """Команда для ручного обновления баланса"""
+    assert DB_POOL is not None
+    u = message.from_user
+    
+    # Получаем текущий баланс
+    user = await upsert_user(DB_POOL, u.id, u.username, u.first_name, u.last_name)
+    
+    text = f"""
+💰 <b>Текущий баланс на сервере</b>
+
+👤 Игрок: {u.first_name}
+💎 Баланс: {user['balance']}
+🎮 Уровень: {user['level']}
+⭐ Опыт: {user['experience']}
+
+Для обновления баланса из WebApp используйте кнопку "Принудительная синхронизация"
+"""
+    await message.answer(text, parse_mode=ParseMode.HTML)
+
+
 @router.message(F.web_app_data)
 async def handle_web_app_data(message: Message):
     """Единый канал синхронизации.
@@ -434,10 +456,14 @@ async def handle_web_app_data(message: Message):
         user_id = u.id
         action = data.get("action")
 
+        print(f"📥 Получены данные от WebApp: action={action}, user_id={user_id}")
+        print(f"📦 Данные: {json.dumps(data, indent=2)}")
+
         # всегда апсертим пользователя, чтобы баланс/инвентарь были общими
         await upsert_user(DB_POOL, user_id, u.username, u.first_name, u.last_name)
 
         if action in ("init", "sync_data"):
+            print(f"🔄 Обработка {action} для user_id={user_id}")
             webapp_data = await get_user_data_for_webapp(user_id)
             webapp_data["success"] = True
             webapp_data["config"] = {
@@ -446,38 +472,103 @@ async def handle_web_app_data(message: Message):
                 "daily_bonus": 100,
                 "version": "1.0.0",
             }
+            
+            print(f"📤 Отправка данных для {action}: {json.dumps(webapp_data, indent=2)}")
             await message.answer(json.dumps(webapp_data), parse_mode=None)
             return
 
         if action == "open_case":
             case_id = int(data.get("case_id"))
+            print(f"🎁 Открытие кейса: case_id={case_id}")
             result = await db_open_case(DB_POOL, user_id, case_id)
             if "error" in result:
+                print(f"❌ Ошибка открытия кейса: {result['error']}")
                 await message.answer(json.dumps({"success": False, "error": result["error"]}), parse_mode=None)
                 return
 
             webapp_data = await get_user_data_for_webapp(user_id)
             result.update(webapp_data)
+            print(f"✅ Кейс успешно открыт: {json.dumps(result, indent=2)}")
             await message.answer(json.dumps(result), parse_mode=None)
             return
 
         if action == "sell_item":
             item_id = int(data.get("item_id"))
+            print(f"💰 Продажа предмета: item_id={item_id}")
             result = await db_sell_item(DB_POOL, user_id, item_id)
             if "error" in result:
+                print(f"❌ Ошибка продажи: {result['error']}")
                 await message.answer(json.dumps({"success": False, "error": result["error"]}), parse_mode=None)
                 return
 
             webapp_data = await get_user_data_for_webapp(user_id)
             result.update(webapp_data)
+            print(f"✅ Предмет успешно продан: {json.dumps(result, indent=2)}")
             await message.answer(json.dumps(result), parse_mode=None)
             return
 
+        if action == "update_balance":
+            print(f"💰 Обновление баланса для user_id={user_id}")
+            print(f"📊 Новые данные: balance={data.get('balance')}, experience={data.get('experience')}, level={data.get('level')}")
+            
+            async with DB_POOL.acquire() as conn:
+                try:
+                    async with conn.transaction():
+                        # Обновляем данные пользователя
+                        await conn.execute(
+                            """
+                            UPDATE users 
+                            SET balance = $1, experience = $2, level = $3, last_login = NOW()
+                            WHERE user_id = $4
+                            """,
+                            data.get("balance", 0),
+                            data.get("experience", 0),
+                            data.get("level", 1),
+                            user_id
+                        )
+                        
+                        print(f"✅ Баланс обновлен в базе данных")
+                        
+                        # Получаем обновленные данные
+                        user = await conn.fetchrow(
+                            "SELECT balance, experience, level FROM users WHERE user_id = $1",
+                            user_id
+                        )
+                        
+                        print(f"📊 Обновленные данные пользователя: balance={user['balance']}, experience={user['experience']}, level={user['level']}")
+                        
+                        webapp_data = await get_user_data_for_webapp(user_id)
+                        result = {
+                            "success": True,
+                            "user": {
+                                "balance": int(user["balance"]),
+                                "experience": int(user["experience"]),
+                                "level": int(user["level"])
+                            },
+                            "message": "Баланс успешно обновлен на сервере"
+                        }
+                        result.update(webapp_data)
+                        
+                        print(f"📤 Отправка ответа: {json.dumps(result, indent=2)}")
+                        await message.answer(json.dumps(result), parse_mode=None)
+                        return
+                        
+                except Exception as e:
+                    print(f"❌ Ошибка обновления баланса: {str(e)}")
+                    await message.answer(
+                        json.dumps({"success": False, "error": f"Ошибка обновления баланса: {str(e)}"}),
+                        parse_mode=None
+                    )
+                    return
+
+        print(f"⚠️ Неизвестное действие: {action}")
         await message.answer(json.dumps({"success": False, "error": "Неизвестное действие"}), parse_mode=None)
 
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        print(f"❌ Ошибка JSON: {str(e)}")
         await message.answer(json.dumps({"success": False, "error": "Неверный формат данных"}), parse_mode=None)
     except Exception as e:
+        print(f"❌ Необработанная ошибка: {str(e)}")
         if DEBUG:
             err = str(e)
         else:
@@ -496,11 +587,18 @@ async def main():
     await init_db(DB_POOL)
 
     print("=" * 50)
-    print("🎮 Minecraft Case Opening Bot")
+    print("🎮 Minecraft Case Opening Bot - ТЕСТОВАЯ ВЕРСИЯ")
     print(f"👑 Админ ID: {ADMIN_ID}")
     print(f"🐛 Режим отладки: {DEBUG}")
     print(f"🌐 WEB_APP_URL: {WEB_APP_URL}")
     print("🗄️ Postgres: OK")
+    print("=" * 50)
+    print("Доступные действия WebApp:")
+    print("  • init - Инициализация")
+    print("  • sync_data - Синхронизация данных")
+    print("  • open_case - Открытие кейса")
+    print("  • sell_item - Продажа предмета")
+    print("  • update_balance - Обновление баланса")
     print("=" * 50)
 
     await dp.start_polling(bot)
