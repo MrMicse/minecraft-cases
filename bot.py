@@ -570,7 +570,7 @@ def build_main_menu_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="👤 Профиль", callback_data="profile"),
+                InlineKeyboardButton(text="Профиль", callback_data="profile"),
                 InlineKeyboardButton(text="🎒 Инвентарь", callback_data="inventory")
             ],
             [
@@ -598,14 +598,12 @@ async def handle_profile(callback: CallbackQuery):
     cases_opened = get_cases_opened_count(user["user_id"])
 
     text = f"""
-👤 <b>Профиль игрока</b>
+<b>𝙋𝙧𝙤𝙛𝙞𝙡ь игрока</b>
 
-Имя: {callback.from_user.first_name}
-Баланс: {user['balance']} 💎
-Уровень: {user['level']}
-Опыт: {user['experience']} XP
-Открыто кейсов: {cases_opened}
-Предметов в инвентаре: {len(inventory)}
+<code>{callback.from_user.first_name}</code>
+Баланс · {user['balance']} 💎
+Уровень · {user['level']}  |  XP · {user['experience']}
+Кейсов · {cases_opened}  |  Предметов · {len(inventory)}
     """
 
     await callback.message.edit_text(text, reply_markup=build_back_keyboard(), parse_mode=ParseMode.HTML)
