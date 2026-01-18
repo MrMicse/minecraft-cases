@@ -2069,3 +2069,320 @@ p, h1, h2, h3, h4, h5, h6, span, div {
         transform: translateZ(8px) rotate(5deg); 
     }
 }
+
+/* Стили для уведомлений */
+.notification {
+    background: var(--bg-secondary);
+    border-left: 4px solid var(--accent-primary);
+    border-radius: 8px;
+    padding: 12px 16px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    animation: slideIn 0.3s ease-out;
+    transition: all 0.3s ease;
+}
+
+.notification.info {
+    border-left-color: var(--accent-primary);
+    background: rgba(75, 105, 255, 0.1);
+}
+
+.notification.success {
+    border-left-color: #00d26a;
+    background: rgba(0, 210, 106, 0.1);
+}
+
+.notification.warning {
+    border-left-color: #ffaa00;
+    background: rgba(255, 170, 0, 0.1);
+}
+
+.notification.error {
+    border-left-color: #ff4757;
+    background: rgba(255, 71, 87, 0.1);
+}
+
+.notification-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.notification-content span {
+    flex: 1;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.notification-close {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 1.5rem;
+    cursor: pointer;
+    padding: 0;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background 0.2s;
+}
+
+.notification-close:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Стили для анимации открытия кейса */
+.case-image.opening {
+    animation: caseOpen 1s ease-in-out;
+}
+
+.case-image.opened {
+    transform: scale(0.9);
+    opacity: 0.5;
+}
+
+@keyframes caseOpen {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.1);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+/* Стили для иконок предметов */
+.item-icon-large {
+    font-size: 4rem;
+    animation: itemReveal 0.5s ease-out;
+    text-shadow: 0 0 20px currentColor;
+}
+
+@keyframes itemReveal {
+    from {
+        transform: scale(0);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* Частицы */
+.particle-effect {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.particle {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+@keyframes particleExplode {
+    0% {
+        transform: translate(0, 0);
+        opacity: 1;
+    }
+    100% {
+        transform: translate(var(--end-x), var(--end-y));
+        opacity: 0;
+    }
+}
+
+/* Кнопка синхронизации */
+.sync-btn {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    border: none;
+    color: white;
+    font-size: 1.5rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(75, 105, 255, 0.3);
+    z-index: 1000;
+    transition: all 0.3s ease;
+}
+
+.sync-btn:hover {
+    transform: scale(1.1);
+    box-shadow: 0 6px 16px rgba(75, 105, 255, 0.4);
+}
+
+.sync-btn.syncing {
+    animation: rotate 1s linear infinite;
+}
+
+@keyframes rotate {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Улучшенные стили для инвентаря */
+.inventory-item {
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    padding: 15px;
+    text-align: center;
+    transition: all 0.3s ease;
+    border: 2px solid transparent;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.inventory-item:hover {
+    transform: translateY(-5px);
+    border-color: var(--accent-primary);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+}
+
+.inventory-item .item-icon {
+    font-size: 2.5rem;
+    margin-bottom: 5px;
+}
+
+.inventory-item h4 {
+    font-size: 0.9rem;
+    margin: 0;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+/* Стили для редкостей */
+.item-rarity {
+    font-size: 0.75rem;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.item-rarity.common {
+    background: rgba(75, 105, 255, 0.2);
+    color: #4b69ff;
+}
+
+.item-rarity.uncommon {
+    background: rgba(0, 210, 106, 0.2);
+    color: #00d26a;
+}
+
+.item-rarity.rare {
+    background: rgba(255, 215, 0, 0.2);
+    color: #ffd700;
+}
+
+.item-rarity.epic {
+    background: rgba(136, 71, 255, 0.2);
+    color: #8847ff;
+}
+
+.item-rarity.legendary {
+    background: rgba(255, 0, 0, 0.2);
+    color: #ff0000;
+}
+
+/* Баланс в шапке */
+.user-balance {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(75, 105, 255, 0.1);
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-weight: 600;
+    color: var(--accent-diamond);
+}
+
+.user-balance::before {
+    content: "💎";
+    font-size: 1.2rem;
+}
+
+/* Адаптивность для мобильных */
+@media (max-width: 768px) {
+    .notification {
+        max-width: calc(100% - 40px);
+        font-size: 0.85rem;
+    }
+    
+    .sync-btn {
+        bottom: 80px;
+        right: 15px;
+        width: 45px;
+        height: 45px;
+        font-size: 1.3rem;
+    }
+    
+    .case-card {
+        padding: 15px;
+    }
+    
+    .inventory-item {
+        padding: 12px;
+    }
+}
+
+/* Эффект загрузки */
+.loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid rgba(75, 105, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: var(--accent-primary);
+    animation: spin 1s ease-in-out infinite;
+    margin: 0 auto;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Состояния кнопок */
+button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+button:disabled:hover {
+    transform: none !important;
+}
