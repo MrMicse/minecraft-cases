@@ -5,9 +5,8 @@ if (tg) {
     tg.BackButton?.hide();
     console.log('Telegram Web App инициализирован');
     
-    // Показываем основную кнопку
-    tg.MainButton.text = "Открыть меню";
-    tg.MainButton.show();
+    // Прячем основную кнопку, используем встроенный интерфейс приложения
+    tg.MainButton?.hide();
 }
 
 // Глобальные переменные
@@ -770,20 +769,11 @@ async function openCase() {
     elements.openCaseBtn.innerHTML = '⏳ Открывается...';
     isOpening = true;
     
-    // ЗАПУСКАЕМ АНИМАЦИЮ РУЛЕТКИ СРАЗУ
-    const animationPromise = startRouletteAnimation();
-    
-    // ПАРАЛЛЕЛЬНО отправляем запрос на сервер
-    const serverPromise = sendDataToBot('open_case', {
-        case_id: currentCase.id
-    });
-    
     try {
-        // Ждем завершения анимации рулетки (это происходит быстро)
-        await animationPromise;
-        
-        // Затем ждем ответ от сервера
-        const response = await serverPromise;
+        // Сначала ждем ответ от сервера, чтобы рулетка совпала с предметом
+        const response = await sendDataToBot('open_case', {
+            case_id: currentCase.id
+        });
         
         console.log('Ответ от сервера:', response);
         
@@ -803,6 +793,9 @@ async function openCase() {
             saveToLocalStorage();
             
             console.log('Кейс успешно открыт');
+
+            // Запускаем рулетку строго с предметом, который выпал
+            await startRouletteAnimation(currentItem);
             
             // Показываем результат
             showResult(currentItem);
@@ -815,7 +808,6 @@ async function openCase() {
             alert(response?.error || 'Ошибка при открытии кейса');
             
             // Откатываем изменения
-            userData.balance += currentCase.price;
             updateUI();
         }
         
@@ -823,8 +815,6 @@ async function openCase() {
         console.error('Ошибка при открытии кейса:', error);
         alert('Ошибка соединения с сервером');
         
-        // Откатываем изменения
-        userData.balance += currentCase.price;
         updateUI();
     } finally {
         // Восстанавливаем кнопку
@@ -864,20 +854,20 @@ function generateWonItem(caseItem) {
 }
 
 // Запуск анимации рулетки - УЛУЧШЕННАЯ БЫСТРАЯ ВЕРСИЯ
-function startRouletteAnimation() {
+function startRouletteAnimation(wonItem) {
     return new Promise((resolve) => {
         isRouletteActive = true;
         
-        // Генерируем выигрышный предмет для анимации
-        const wonItem = generateWonItem(currentCase);
-        currentItem = wonItem;
+        // Используем предмет из ответа сервера для анимации
+        const resolvedItem = wonItem || generateWonItem(currentCase);
+        currentItem = resolvedItem;
         
         // Генерируем полную последовательность с выигрышным предметом в центре
-        rouletteItems = generateFullRouletteSequence(wonItem);
+        rouletteItems = generateFullRouletteSequence(resolvedItem);
         
         // Вычисляем индекс выигрышного предмета
         winningItemIndex = Math.floor(rouletteItems.length / 2);
-        rouletteItems[winningItemIndex] = {...wonItem};
+        rouletteItems[winningItemIndex] = {...resolvedItem};
         
         // Отрисовываем предметы заново
         renderRouletteItems();
@@ -1083,13 +1073,14 @@ function createParticles() {
     
     const color = particleColors[currentItem.rarity] || '#4b69ff';
     
-    for (let i = 0; i < 20; i++) {
+    const particleCount = 12;
+    for (let i = 0; i < particleCount; i++) {
         const particle = document.createElement('div');
         particle.className = 'particle';
         
-        const size = 5 + Math.random() * 10;
-        const angle = (i / 20) * Math.PI * 2;
-        const distance = 50 + Math.random() * 100;
+        const size = 4 + Math.random() * 8;
+        const angle = (i / particleCount) * Math.PI * 2;
+        const distance = 35 + Math.random() * 80;
         
         particle.style.cssText = `
             position: absolute;
@@ -1103,7 +1094,7 @@ function createParticles() {
             animation: particleExplode 1s ease-out ${i * 0.03}s forwards;
             --end-x: ${Math.cos(angle) * distance}px;
             --end-y: ${Math.sin(angle) * distance}px;
-            filter: drop-shadow(0 0 5px ${color});
+            filter: drop-shadow(0 0 3px ${color});
         `;
         
         particleContainer.appendChild(particle);
