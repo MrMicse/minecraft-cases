@@ -27,6 +27,7 @@ from db import (
     reset_all_user_data,
     sell_item as db_sell_item,
     upsert_user,
+    update_user_balance,
 )
 
 
@@ -136,6 +137,7 @@ async def cmd_reset_all(message: Message):
     await reset_all_user_data(DB_POOL)
     await message.answer("✅ Готово. Все данные пользователей сброшены. Перезапустите WebApp.")
 
+
 @router.message(Command("sync"))
 async def cmd_sync(message: Message):
     """Команда для принудительной синхронизации данных WebApp с сервером."""
@@ -166,6 +168,7 @@ async def cmd_sync(message: Message):
 3. Или перезагрузите страницу в WebApp
 """
     await message.answer(text, parse_mode=ParseMode.HTML)
+
 
 @router.message(Command("admin"))
 async def cmd_admin(message: Message):
@@ -213,6 +216,7 @@ async def cmd_admin(message: Message):
     
     await message.answer(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
 
+
 @router.callback_query(F.data == "admin_reset_confirm")
 async def handle_admin_reset_confirm(callback: CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
@@ -240,6 +244,7 @@ async def handle_admin_reset_confirm(callback: CallbackQuery):
     )
     await callback.answer()
 
+
 @router.callback_query(F.data == "admin_reset_yes")
 async def handle_admin_reset_yes(callback: CallbackQuery):
     if callback.from_user.id != ADMIN_ID:
@@ -254,6 +259,7 @@ async def handle_admin_reset_yes(callback: CallbackQuery):
         parse_mode=ParseMode.HTML
     )
     await callback.answer("Данные сброшены!")
+
 
 @router.callback_query(F.data == "admin_sync")
 async def handle_admin_sync(callback: CallbackQuery):
@@ -275,10 +281,12 @@ async def handle_admin_sync(callback: CallbackQuery):
     )
     await callback.answer("Синхронизировано")
 
+
 @router.callback_query(F.data == "admin_cancel")
 async def handle_admin_cancel(callback: CallbackQuery):
     await callback.message.edit_text("❌ Действие отменено.")
     await callback.answer()
+
 
 @router.message(Command("stats"))
 async def cmd_stats(message: Message):
@@ -511,55 +519,29 @@ async def handle_web_app_data(message: Message):
             print(f"💰 Обновление баланса для user_id={user_id}")
             print(f"📊 Новые данные: balance={data.get('balance')}, experience={data.get('experience')}, level={data.get('level')}")
             
-            async with DB_POOL.acquire() as conn:
-                try:
-                    async with conn.transaction():
-                        # Обновляем данные пользователя
-                        await conn.execute(
-                            """
-                            UPDATE users 
-                            SET balance = $1, experience = $2, level = $3, last_login = NOW()
-                            WHERE user_id = $4
-                            """,
-                            data.get("balance", 0),
-                            data.get("experience", 0),
-                            data.get("level", 1),
-                            user_id
-                        )
-                        
-                        print(f"✅ Баланс обновлен в базе данных")
-                        
-                        # Получаем обновленные данные
-                        user = await conn.fetchrow(
-                            "SELECT balance, experience, level FROM users WHERE user_id = $1",
-                            user_id
-                        )
-                        
-                        print(f"📊 Обновленные данные пользователя: balance={user['balance']}, experience={user['experience']}, level={user['level']}")
-                        
-                        webapp_data = await get_user_data_for_webapp(user_id)
-                        result = {
-                            "success": True,
-                            "user": {
-                                "balance": int(user["balance"]),
-                                "experience": int(user["experience"]),
-                                "level": int(user["level"])
-                            },
-                            "message": "Баланс успешно обновлен на сервере"
-                        }
-                        result.update(webapp_data)
-                        
-                        print(f"📤 Отправка ответа: {json.dumps(result, indent=2)}")
-                        await message.answer(json.dumps(result), parse_mode=None)
-                        return
-                        
-                except Exception as e:
-                    print(f"❌ Ошибка обновления баланса: {str(e)}")
-                    await message.answer(
-                        json.dumps({"success": False, "error": f"Ошибка обновления баланса: {str(e)}"}),
-                        parse_mode=None
-                    )
-                    return
+            # Используем новую функцию для обновления баланса
+            result = await update_user_balance(
+                DB_POOL,
+                user_id,
+                data.get("balance", 0),
+                data.get("experience", 0),
+                data.get("level", 1)
+            )
+            
+            if "error" in result:
+                print(f"❌ Ошибка обновления баланса: {result['error']}")
+                await message.answer(
+                    json.dumps({"success": False, "error": result["error"]}),
+                    parse_mode=None
+                )
+                return
+            
+            webapp_data = await get_user_data_for_webapp(user_id)
+            result.update(webapp_data)
+            
+            print(f"📤 Отправка ответа: {json.dumps(result, indent=2)}")
+            await message.answer(json.dumps(result), parse_mode=None)
+            return
 
         print(f"⚠️ Неизвестное действие: {action}")
         await message.answer(json.dumps({"success": False, "error": "Неизвестное действие"}), parse_mode=None)
@@ -587,11 +569,14 @@ async def main():
     await init_db(DB_POOL)
 
     print("=" * 50)
-    print("🎮 Minecraft Case Opening Bot - ТЕСТОВАЯ ВЕРСИЯ")
+    print("🎮 Minecraft Case Opening Bot - ИСПРАВЛЕННАЯ ВЕРСИЯ")
     print(f"👑 Админ ID: {ADMIN_ID}")
     print(f"🐛 Режим отладки: {DEBUG}")
     print(f"🌐 WEB_APP_URL: {WEB_APP_URL}")
     print("🗄️ Postgres: OK")
+    print("=" * 50)
+    print("✅ ФИКС: upsert_user НЕ перезаписывает баланс существующих пользователей")
+    print("✅ ФИКС: update_user_balance корректно обновляет баланс")
     print("=" * 50)
     print("Доступные действия WebApp:")
     print("  • init - Инициализация")
