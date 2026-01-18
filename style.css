@@ -312,8 +312,8 @@ body {
     transform: translateY(-8px);
     box-shadow: 
         0 15px 35px rgba(0, 0, 0, 0.5),
-        inset 0 0 40px rgba(255, 215, 0, 0.1);
-    border-color: var(--accent-gold);
+        inset 0 0 40px rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.15);
 }
 
 .case-card:hover::before {
@@ -352,6 +352,7 @@ body {
             transparent 20px, 
             rgba(0, 0, 0, 0.1) 20px, 
             rgba(0, 0, 0, 0.1) 40px);
+    pointer-events: none;
 }
 
 .case-icon {
@@ -376,6 +377,7 @@ body {
     gap: 5px;
     padding: 0 10px;
     opacity: 0.7;
+    pointer-events: none;
 }
 
 .case-items-preview span {
@@ -1777,13 +1779,14 @@ p, h1, h2, h3, h4, h5, h6, span, div {
     background-size: contain;
     background-repeat: no-repeat;
     background-position: center;
-    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3));
+    filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.25));
     transition: all 0.3s ease;
+    pointer-events: none;
 }
 
 .case-card:hover .case-texture {
     transform: translateY(-5px) scale(1.05);
-    filter: drop-shadow(0 8px 20px rgba(255, 215, 0, 0.4));
+    filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.25));
 }
 
 /* Глоу эффект для кейсов */
@@ -1956,8 +1959,8 @@ p, h1, h2, h3, h4, h5, h6, span, div {
     box-shadow: 
         0 10px 20px rgba(0, 0, 0, 0.2) !important;
     
-    /* Легкая золотая рамка */
-    border-color: rgba(255, 215, 0, 0.3) !important;
+    /* Нейтральная рамка без желтого блика */
+    border-color: rgba(255, 255, 255, 0.15) !important;
 }
 
 /* Анимация для PNG текстур кейсов - легкая */
@@ -1968,10 +1971,10 @@ p, h1, h2, h3, h4, h5, h6, span, div {
 
 @keyframes textureFloat {
     0%, 100% { 
-        transform: translateZ(0px) scale(1);
+        transform: translateY(0px) scale(1);
     }
     50% { 
-        transform: translateZ(10px) scale(1.02);
+        transform: translateY(-4px) scale(1.01);
     }
 }
 
