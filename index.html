@@ -3,12 +3,92 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minecraft Case Opening</title>
+    <title>Minecraft Case Opening - ТЕСТ</title>
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        .test-controls {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+            padding: 15px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            border: 2px solid #4b69ff;
+        }
+        
+        .test-btn {
+            padding: 10px 15px;
+            background: linear-gradient(135deg, #4b69ff, #1a47ff);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            flex: 1;
+            min-width: 150px;
+        }
+        
+        .test-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(75, 105, 255, 0.4);
+        }
+        
+        .test-btn.danger {
+            background: linear-gradient(135deg, #ff4444, #cc0000);
+        }
+        
+        .test-btn.success {
+            background: linear-gradient(135deg, #00d26a, #00a854);
+        }
+        
+        .test-status {
+            padding: 15px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            margin-top: 15px;
+            border: 2px solid #ffd700;
+        }
+        
+        .test-status h3 {
+            color: #ffd700;
+            margin-bottom: 10px;
+        }
+        
+        .test-status p {
+            margin: 5px 0;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        
+        .sync-status {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            margin-left: 10px;
+        }
+        
+        .sync-success {
+            background: rgba(0, 210, 106, 0.3);
+            color: #00d26a;
+        }
+        
+        .sync-error {
+            background: rgba(255, 68, 68, 0.3);
+            color: #ff4444;
+        }
+        
+        .sync-none {
+            background: rgba(255, 215, 0, 0.3);
+            color: #ffd700;
+        }
+    </style>
 </head>
 <body>
     <div class="app-container">
@@ -16,16 +96,36 @@
         <header class="header">
             <div class="logo">
                 <span class="logo-icon">⛏️</span>
-                <h1>Minecraft Cases</h1>
+                <h1>Minecraft Cases - ТЕСТ</h1>
             </div>
             <div class="user-info">
                 <div class="balance">
                     <span class="balance-icon">💎</span>
-                    <span id="user-balance">1000</span>
+                    <span id="user-balance">10000</span>
                 </div>
                 <button class="btn-inventory" id="inventory-btn">🎒</button>
             </div>
         </header>
+
+        <!-- Тестовые элементы -->
+        <div class="test-controls">
+            <button class="test-btn success" id="add-balance">+1000 💎</button>
+            <button class="test-btn danger" id="remove-balance">-1000 💎</button>
+            <button class="test-btn" id="reset-balance">Сброс: 10000 💎</button>
+            <button class="test-btn success" id="force-sync">Принудительная синхронизация</button>
+            <button class="test-btn" id="clear-storage">Очистить localStorage</button>
+            <button class="test-btn" id="simulate-open">Симулировать открытие (-500)</button>
+        </div>
+        
+        <div class="test-status">
+            <h3>Статус синхронизации:</h3>
+            <p id="sync-info">Загрузка...</p>
+            <p>Баланс localStorage: <span id="local-balance">-</span></p>
+            <p>Баланс сервера: <span id="server-balance">-</span></p>
+            <p>Кейсы в localStorage: <span id="local-cases">0</span></p>
+            <p>Кейсы с сервера: <span id="server-cases">0</span></p>
+            <p>Telegram Web App: <span id="tg-status">❌ Не доступен</span></p>
+        </div>
 
         <!-- Основной контент -->
         <main class="main-content">
@@ -34,47 +134,7 @@
             </section>
         </main>
 
-        <!-- Модальное окно открытия кейса -->
-        <div class="modal-overlay" id="case-modal">
-            <div class="modal">
-                <div class="modal-header">
-                    <h2 id="case-name">Minecraft Кейс</h2>
-                    <button class="close-modal" id="close-modal">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <!-- PNG изображение кейса -->
-                    <div class="modal-case-texture"></div>
-                    
-                    <!-- Рулетка -->
-                    <div class="roulette-container" id="roulette-container">
-                        <div class="roulette-wheel-wrapper">
-                            <div class="center-indicator">
-                                <div class="indicator-arrow">▼</div>
-                                <div class="indicator-line"></div>
-                            </div>
-                            <!-- Визуальная зона для понимания где может остановиться -->
-                            <div class="center-zone"></div>
-                            <div class="items-track" id="items-track">
-                                <!-- Предметы будут добавлены через JS -->
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <div class="case-info">
-                        <p class="case-price">Цена: <span id="case-price-value">100</span> 💎</p>
-                        <button class="btn-open-case" id="open-case-btn">
-                            ⛏️ Открыть за <span id="open-price">100</span> 💎
-                        </button>
-                        <p class="case-description" id="case-description"></p>
-                        <div class="case-items-preview-modal">
-                            <!-- Предметы для предпросмотра -->
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Модальное окно инвентаря -->
+        <!-- Модальные окна -->
         <div class="modal-overlay" id="inventory-modal">
             <div class="modal inventory-modal">
                 <div class="modal-header">
@@ -84,30 +144,6 @@
                 <div class="modal-body">
                     <div class="inventory-grid" id="inventory-grid">
                         <!-- Предметы будут добавлены через JS -->
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Модальное окно результата -->
-        <div class="modal-overlay" id="result-modal">
-            <div class="modal result-modal">
-                <div class="result-header">
-                    <h2>🎉 Поздравляем!</h2>
-                </div>
-                <div class="result-body">
-                    <div class="result-item-display">
-                        <div class="result-item-icon" id="result-icon">💎</div>
-                        <div class="particle-effect"></div>
-                    </div>
-                    <div class="result-info">
-                        <h3 id="result-item-name">Алмаз</h3>
-                        <div class="item-rarity common" id="result-item-rarity">Обычный</div>
-                        <p class="item-price">💎 Цена: <span id="result-item-price">50</span></p>
-                        <div class="result-stats">
-                            <p>Новый баланс: <span id="new-balance">900</span> 💎</p>
-                        </div>
-                        <button class="btn-close-result" id="close-result">Продолжить</button>
                     </div>
                 </div>
             </div>
