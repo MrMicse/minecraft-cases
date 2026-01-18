@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>💰 Баланс и Профиль</title>
+    <title>💰 Баланс | Telegram Bot</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         * {
@@ -21,19 +21,19 @@
         }
         
         .container {
-            max-width: 500px;
+            max-width: 450px;
             margin: 0 auto;
         }
         
         .header {
             text-align: center;
-            margin-bottom: 25px;
+            margin-bottom: 20px;
             padding: 15px;
         }
         
         .header h1 {
-            margin-bottom: 5px;
             font-size: 24px;
+            margin-bottom: 5px;
         }
         
         .header p {
@@ -41,27 +41,26 @@
             font-size: 14px;
         }
         
-        .user-profile {
+        .user-info {
             background: rgba(255, 255, 255, 0.15);
             padding: 15px;
             border-radius: 15px;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
             backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
         }
         
-        .profile-row {
+        .user-row {
             display: flex;
             justify-content: space-between;
             margin-bottom: 8px;
-            font-size: 14px;
+            font-size: 15px;
         }
         
-        .profile-label {
+        .user-label {
             opacity: 0.8;
         }
         
-        .profile-value {
+        .user-value {
             font-weight: 500;
         }
         
@@ -73,18 +72,6 @@
             text-align: center;
             margin-bottom: 20px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .balance-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 5px;
-            background: linear-gradient(90deg, #667eea, #764ba2);
         }
         
         .balance-label {
@@ -100,16 +87,11 @@
             color: #2d3748;
         }
         
-        .balance-currency {
-            font-size: 16px;
-            color: #4a5568;
-        }
-        
         .controls {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
             gap: 12px;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
         }
         
         .btn {
@@ -119,7 +101,7 @@
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: all 0.2s;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -130,80 +112,77 @@
             font-size: 18px;
         }
         
-        .btn-success {
+        .btn-deposit {
             background: linear-gradient(135deg, #4CAF50, #2E7D32);
             color: white;
         }
         
-        .btn-danger {
+        .btn-withdraw {
             background: linear-gradient(135deg, #f44336, #c62828);
             color: white;
         }
         
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea, #764ba2);
-            color: white;
-        }
-        
-        .btn-warning {
-            background: linear-gradient(135deg, #FF9800, #EF6C00);
-            color: white;
-        }
-        
-        .btn-info {
+        .btn-sync {
             background: linear-gradient(135deg, #2196F3, #1565C0);
+            color: white;
+        }
+        
+        .btn-reset {
+            background: linear-gradient(135deg, #FF9800, #EF6C00);
             color: white;
         }
         
         .btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
         }
         
         .btn:active {
             transform: translateY(0);
         }
         
-        .sync-status {
+        .message {
+            display: none;
             background: rgba(255, 255, 255, 0.15);
             padding: 12px;
-            border-radius: 12px;
-            margin-top: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
             text-align: center;
             backdrop-filter: blur(10px);
-            display: none;
-            border-left: 4px solid transparent;
         }
         
-        .status-success {
-            border-left-color: #4CAF50;
-            background: rgba(76, 175, 80, 0.15);
+        .message.success {
+            background: rgba(76, 175, 80, 0.2);
+            border-left: 4px solid #4CAF50;
         }
         
-        .status-error {
-            border-left-color: #f44336;
-            background: rgba(244, 67, 54, 0.15);
-        }
-        
-        .status-warning {
-            border-left-color: #FF9800;
-            background: rgba(255, 152, 0, 0.15);
+        .message.error {
+            background: rgba(244, 67, 54, 0.2);
+            border-left: 4px solid #f44336;
         }
         
         .loading {
             display: none;
-            text-align: center;
-            margin: 20px 0;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            z-index: 1000;
         }
         
         .spinner {
             border: 4px solid rgba(255, 255, 255, 0.3);
-            border-top: 4px solid #fff;
+            border-top: 4px solid white;
             border-radius: 50%;
-            width: 40px;
-            height: 40px;
+            width: 50px;
+            height: 50px;
             animation: spin 1s linear infinite;
-            margin: 0 auto 10px;
+            margin-bottom: 15px;
         }
         
         @keyframes spin {
@@ -211,21 +190,20 @@
             100% { transform: rotate(360deg); }
         }
         
-        .history-section {
-            margin-top: 25px;
+        .history {
+            margin-top: 20px;
         }
         
         .history-title {
+            font-size: 18px;
+            margin-bottom: 10px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 15px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
         }
         
         .history-list {
-            max-height: 300px;
+            max-height: 200px;
             overflow-y: auto;
         }
         
@@ -233,50 +211,41 @@
             background: rgba(255, 255, 255, 0.1);
             padding: 12px;
             border-radius: 10px;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
             display: flex;
             justify-content: space-between;
             align-items: center;
             backdrop-filter: blur(10px);
-            transition: background 0.3s;
         }
         
-        .history-item:hover {
-            background: rgba(255, 255, 255, 0.15);
+        .history-time {
+            font-size: 13px;
+            opacity: 0.8;
+        }
+        
+        .history-type {
+            font-weight: 600;
+            margin-top: 3px;
         }
         
         .positive {
             color: #4CAF50;
-            font-weight: 600;
         }
         
         .negative {
             color: #f44336;
-            font-weight: 600;
         }
         
-        .neutral {
-            color: #FF9800;
-            font-weight: 600;
+        .history-balance {
+            font-weight: bold;
+            font-size: 16px;
         }
         
-        /* Скроллбар */
-        .history-list::-webkit-scrollbar {
-            width: 6px;
-        }
-        
-        .history-list::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 3px;
-        }
-        
-        .history-list::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.3);
-            border-radius: 3px;
-        }
-        
-        .history-list::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.4);
+        .empty-history {
+            text-align: center;
+            padding: 20px;
+            opacity: 0.7;
+            font-style: italic;
         }
         
         /* Адаптивность */
@@ -291,7 +260,6 @@
             
             .btn {
                 padding: 14px;
-                font-size: 15px;
             }
         }
     </style>
@@ -299,65 +267,56 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>💰 Баланс и Профиль</h1>
+            <h1>💰 Управление балансом</h1>
             <p>Синхронизация с Telegram ботом</p>
         </div>
         
-        <div class="user-profile">
-            <div class="profile-row">
-                <div class="profile-label">👤 Пользователь:</div>
-                <div class="profile-value" id="username">Загрузка...</div>
+        <div class="user-info">
+            <div class="user-row">
+                <div class="user-label">👤 Пользователь:</div>
+                <div class="user-value" id="username">...</div>
             </div>
-            <div class="profile-row">
-                <div class="profile-label">🆔 ID:</div>
-                <div class="profile-value" id="userid">-</div>
+            <div class="user-row">
+                <div class="user-label">🆔 ID:</div>
+                <div class="user-value" id="userid">...</div>
             </div>
-            <div id="profileInfo"></div>
         </div>
         
         <div class="balance-card">
             <div class="balance-label">Текущий баланс</div>
             <div class="balance-amount" id="balance">0</div>
-            <div class="balance-currency">рублей</div>
+            <div style="color: #666; font-size: 14px;">российских рублей</div>
         </div>
         
         <div class="controls">
-            <button class="btn btn-success" onclick="changeBalance(100)">
-                <span>➕</span> +100 руб.
+            <button class="btn btn-deposit" onclick="changeBalance(100)">
+                <span>➕</span> +100 ₽
             </button>
-            <button class="btn btn-danger" onclick="changeBalance(-100)">
-                <span>➖</span> -100 руб.
+            <button class="btn btn-withdraw" onclick="changeBalance(-100)">
+                <span>➖</span> -100 ₽
             </button>
-            <button class="btn btn-primary" onclick="syncWithServer()">
+            <button class="btn btn-sync" onclick="syncButton()">
                 <span>🔄</span> Синхронизировать
             </button>
-            <button class="btn btn-warning" onclick="resetBalance()">
+            <button class="btn btn-reset" onclick="resetButton()">
                 <span>🔄</span> Сбросить
             </button>
-            <button class="btn btn-info" onclick="showProfile()">
-                <span>👤</span> Профиль
-            </button>
-            <button class="btn" onclick="forceSync()" style="background: #9C27B0; color: white;">
-                <span>⚡</span> Форс-синх
-            </button>
         </div>
+        
+        <div class="message" id="message"></div>
         
         <div class="loading" id="loading">
             <div class="spinner"></div>
-            <div>Загрузка...</div>
+            <div style="color: white;">Загрузка...</div>
         </div>
         
-        <div class="sync-status" id="status"></div>
-        
-        <div class="history-section">
+        <div class="history">
             <div class="history-title">
-                <h3>📊 История операций</h3>
-                <div style="font-size: 14px; opacity: 0.8;">Всего: <span id="historyCount">0</span></div>
+                <span>📊 Последние операции</span>
+                <span style="font-size: 14px; opacity: 0.8;">Всего: <span id="historyCount">0</span></span>
             </div>
             <div class="history-list" id="historyList">
-                <div style="text-align: center; padding: 20px; opacity: 0.7;">
-                    История операций появится здесь
-                </div>
+                <div class="empty-history">История операций пуста</div>
             </div>
         </div>
     </div>

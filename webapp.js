@@ -1,463 +1,276 @@
 // Конфигурация
-const SERVER_URL = 'http://localhost:3000'; // URL вашего сервера бота
-let tg = null;
+const SERVER_URL = 'http://localhost:3000';
+let tg = window.Telegram?.WebApp;
 let userId = null;
-let userData = null;
-let currentBalance = 10000;
-let history = [];
+let userData = {
+    balance: 10000,
+    firstName: 'Гость',
+    history: []
+};
 
-// Инициализация Telegram WebApp
-async function initTelegramWebApp() {
-    tg = window.Telegram.WebApp;
-    
-    if (!tg) {
-        console.error('Telegram WebApp не доступен');
-        showStatus('Ошибка: Запускайте через Telegram', false);
-        initDemoMode();
-        return;
-    }
-    
-    // Расширяем на весь экран
-    tg.expand();
-    
-    // Получаем данные пользователя из Telegram
-    const user = tg.initDataUnsafe.user;
-    userId = user?.id || getUserIdFromUrl();
-    
-    if (!userId) {
-        initDemoMode();
-        return;
-    }
-    
-    // Сохраняем ID в localStorage для демо-режима
-    localStorage.setItem('telegram_user_id', userId);
-    
-    // Загружаем данные пользователя
-    await loadUserData();
-    
-    // Показываем кнопку "Закрыть"
-    tg.MainButton.setText('Закрыть').show();
-    tg.MainButton.onClick(() => {
-        // Синхронизируем перед закрытием
-        syncWithServer().then(() => tg.close());
-    });
-    
-    // Добавляем кнопку "Профиль"
-    tg.MainButton.setText('👤 Профиль').show();
-}
-
-// Демо-режим (без Telegram)
-function initDemoMode() {
-    userId = localStorage.getItem('telegram_user_id') || 
-             `demo_${Math.floor(Math.random() * 1000000)}`;
-    
-    document.getElementById('username').textContent = 'Демо-пользователь';
-    document.getElementById('userid').textContent = userId;
+// Инициализация
+async function initApp() {
+    // Получаем ID пользователя
+    userId = getUserId();
     
     // Загружаем данные
-    loadUserData();
+    await loadUserData();
     
-    showStatus('⚠️ Демо-режим (без Telegram)', false);
+    // Обновляем интерфейс
+    updateUI();
+    
+    // Если это Telegram WebApp
+    if (tg) {
+        tg.expand();
+        tg.MainButton.setText('Закрыть').show();
+        tg.MainButton.onClick(() => tg.close());
+    }
 }
 
-// Получение ID из URL
-function getUserIdFromUrl() {
+// Получение ID пользователя
+function getUserId() {
+    // 1. Из Telegram
+    if (tg?.initDataUnsafe?.user?.id) {
+        return tg.initDataUnsafe.user.id.toString();
+    }
+    
+    // 2. Из URL
     const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get('user_id');
+    const tgId = urlParams.get('tg_id');
+    if (tgId) return tgId;
+    
+    // 3. Из localStorage (демо режим)
+    const savedId = localStorage.getItem('tg_user_id');
+    if (savedId) return savedId;
+    
+    // 4. Создаем новый ID
+    const newId = 'demo_' + Date.now();
+    localStorage.setItem('tg_user_id', newId);
+    return newId;
 }
 
-// Загрузка данных пользователя с сервера
+// Загрузка данных пользователя
 async function loadUserData() {
     showLoading(true);
     
     try {
-        // 1. Пробуем загрузить с сервера
+        // Пробуем загрузить с сервера
         const response = await fetch(`${SERVER_URL}/api/user/${userId}`);
         
         if (response.ok) {
             const data = await response.json();
-            userData = data.user;
-            currentBalance = userData.balance;
-            history = userData.history || [];
-            
-            // Обновляем интерфейс
-            updateUserDisplay();
-            updateBalanceDisplay();
-            updateHistoryDisplay();
-            
-            showStatus('✅ Данные загружены с сервера', true);
+            if (data.success) {
+                userData = data.user;
+                saveToLocalStorage();
+            }
         } else {
-            // 2. Если сервер недоступен, используем localStorage
-            await loadFromLocalStorage();
-            showStatus('⚠️ Используются локальные данные', false);
+            // Загружаем из localStorage
+            loadFromLocalStorage();
         }
-        
     } catch (error) {
-        console.error('Ошибка загрузки:', error);
-        await loadFromLocalStorage();
-        showStatus('❌ Сервер недоступен', false);
+        console.log('Сервер недоступен, используем локальные данные');
+        loadFromLocalStorage();
     } finally {
         showLoading(false);
     }
 }
 
 // Загрузка из localStorage
-async function loadFromLocalStorage() {
-    const savedData = localStorage.getItem(`user_${userId}`);
-    
-    if (savedData) {
+function loadFromLocalStorage() {
+    const saved = localStorage.getItem(`user_${userId}`);
+    if (saved) {
         try {
-            const parsed = JSON.parse(savedData);
-            userData = parsed;
-            currentBalance = parsed.balance || 10000;
-            history = parsed.history || [];
+            userData = JSON.parse(saved);
         } catch (e) {
-            // Ошибка парсинга
-            userData = createDefaultUserData();
+            userData = { balance: 10000, firstName: 'Пользователь', history: [] };
         }
-    } else {
-        userData = createDefaultUserData();
-    }
-    
-    updateUserDisplay();
-    updateBalanceDisplay();
-    updateHistoryDisplay();
-}
-
-// Создание данных пользователя по умолчанию
-function createDefaultUserData() {
-    return {
-        id: userId,
-        firstName: 'Пользователь',
-        balance: 10000,
-        registrationDate: new Date().toISOString(),
-        lastSync: null,
-        history: []
-    };
-}
-
-// Обновление отображения профиля
-function updateUserDisplay() {
-    document.getElementById('username').textContent = userData?.firstName || 'Пользователь';
-    document.getElementById('userid').textContent = userId;
-    
-    // Обновляем дополнительную информацию если есть элемент
-    const profileInfo = document.getElementById('profileInfo');
-    if (profileInfo) {
-        const lastSync = userData?.lastSync ? 
-            new Date(userData.lastSync).toLocaleString('ru-RU') : 'никогда';
-        
-        profileInfo.innerHTML = `
-            <div>🔄 Последняя синхронизация: ${lastSync}</div>
-            <div>📊 Операций: ${history.length}</div>
-        `;
-    }
-}
-
-// Изменение баланса
-async function changeBalance(amount) {
-    if (amount < 0 && currentBalance < Math.abs(amount)) {
-        showStatus('❌ Недостаточно средств', false);
-        return;
-    }
-    
-    const oldBalance = currentBalance;
-    currentBalance += amount;
-    
-    // Создаем запись операции
-    const operation = {
-        type: amount > 0 ? 'deposit' : 'withdraw',
-        amount: Math.abs(amount),
-        balanceBefore: oldBalance,
-        balanceAfter: currentBalance,
-        source: 'webapp'
-    };
-    
-    // Добавляем в историю
-    addToHistory(operation);
-    
-    // Сохраняем локально
-    await saveToLocalStorage(operation);
-    
-    // Обновляем отображение
-    updateBalanceDisplay();
-    
-    // Показываем статус
-    const action = amount > 0 ? 'Пополнено' : 'Списано';
-    showStatus(
-        `${action} ${Math.abs(amount)} руб.\n` +
-        `Новый баланс: ${currentBalance} руб.`,
-        true
-    );
-    
-    // Синхронизируем с сервером
-    setTimeout(() => syncWithServer(operation), 500);
-}
-
-// Синхронизация с сервером
-async function syncWithServer(operation = null) {
-    showLoading(true);
-    
-    try {
-        const syncData = {
-            balance: currentBalance,
-            history: history,
-            operation: operation
-        };
-        
-        const response = await fetch(`${SERVER_URL}/api/user/${userId}/sync`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(syncData)
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            
-            // Обновляем данные с сервера
-            if (data.success) {
-                userData = data.user;
-                currentBalance = data.user.balance;
-                
-                // Обновляем интерфейс
-                updateUserDisplay();
-                updateBalanceDisplay();
-                
-                // Вибрация в Telegram
-                if (tg?.HapticFeedback) {
-                    tg.HapticFeedback.impactOccurred('medium');
-                }
-                
-                showStatus('✅ Синхронизировано с сервером!', true);
-            }
-        } else if (response.status === 409) {
-            // Конфликт версий
-            const errorData = await response.json();
-            showStatus(`⚠️ Конфликт: ${errorData.error}`, false);
-            
-            // Предлагаем разрешить конфликт
-            if (confirm(`Обнаружено расхождение!\n\n` +
-                       `Ваш баланс: ${currentBalance}\n` +
-                       `На сервере: ${errorData.serverBalance}\n\n` +
-                       `Использовать серверный баланс?`)) {
-                currentBalance = errorData.serverBalance;
-                updateBalanceDisplay();
-                await syncWithServer(); // Повторная синхронизация
-            }
-        } else {
-            showStatus('⚠️ Ошибка синхронизации', false);
-        }
-        
-    } catch (error) {
-        console.error('Ошибка синхронизации:', error);
-        showStatus('❌ Сервер недоступен', false);
-    } finally {
-        showLoading(false);
-    }
-}
-
-// Полная синхронизация (принудительная)
-async function forceSync() {
-    if (confirm('Выполнить принудительную синхронизацию?\nТекущие данные будут отправлены на сервер.')) {
-        showLoading(true);
-        
-        try {
-            const response = await fetch(`${SERVER_URL}/api/user/${userId}/full-sync`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    balance: currentBalance,
-                    history: history,
-                    force: true
-                })
-            });
-            
-            if (response.ok) {
-                const data = await response.json();
-                if (data.success) {
-                    userData = data.user;
-                    currentBalance = data.user.balance;
-                    
-                    updateUserDisplay();
-                    updateBalanceDisplay();
-                    showStatus('✅ Принудительная синхронизация выполнена', true);
-                }
-            }
-        } catch (error) {
-            console.error('Ошибка:', error);
-            showStatus('❌ Ошибка синхронизации', false);
-        } finally {
-            showLoading(false);
-        }
-    }
-}
-
-// Сброс баланса
-async function resetBalance() {
-    if (confirm('Сбросить баланс к 10000 рублей?')) {
-        const oldBalance = currentBalance;
-        currentBalance = 10000;
-        
-        const operation = {
-            type: 'reset',
-            amount: 10000 - oldBalance,
-            balanceBefore: oldBalance,
-            balanceAfter: currentBalance,
-            source: 'webapp'
-        };
-        
-        addToHistory(operation);
-        await saveToLocalStorage(operation);
-        
-        updateBalanceDisplay();
-        showStatus('🔄 Баланс сброшен к 10000 руб.', true);
-        
-        // Синхронизируем
-        await syncWithServer(operation);
     }
 }
 
 // Сохранение в localStorage
-async function saveToLocalStorage(operation) {
-    if (!userData) {
-        userData = createDefaultUserData();
-    }
-    
-    userData.balance = currentBalance;
-    userData.lastSync = new Date().toISOString();
-    
-    if (operation) {
-        operation.date = new Date().toISOString();
-        userData.history = userData.history || [];
-        userData.history.push(operation);
-        history = userData.history;
-    }
-    
+function saveToLocalStorage() {
     localStorage.setItem(`user_${userId}`, JSON.stringify(userData));
 }
 
-// Добавление в историю
-function addToHistory(operation) {
-    const now = new Date();
-    const historyItem = {
-        ...operation,
-        id: Date.now(),
-        time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        date: now.toLocaleDateString(),
-        timestamp: now.toISOString()
-    };
-    
-    history.unshift(historyItem);
-    
-    // Ограничиваем историю
-    if (history.length > 20) {
-        history = history.slice(0, 20);
+// Изменение баланса
+async function changeBalance(amount) {
+    if (amount < 0 && userData.balance < Math.abs(amount)) {
+        showMessage('❌ Недостаточно средств!', false);
+        return;
     }
     
-    updateHistoryDisplay();
+    const oldBalance = userData.balance;
+    userData.balance += amount;
+    
+    // Добавляем в историю
+    userData.history.push({
+        type: amount > 0 ? 'deposit' : 'withdraw',
+        amount: Math.abs(amount),
+        date: new Date().toISOString(),
+        balanceBefore: oldBalance,
+        balanceAfter: userData.balance
+    });
+    
+    // Обновляем интерфейс
+    updateUI();
+    
+    // Сохраняем локально
+    saveToLocalStorage();
+    
+    // Синхронизируем с сервером
+    await syncWithServer({
+        type: amount > 0 ? 'deposit' : 'withdraw',
+        amount: Math.abs(amount),
+        balanceBefore: oldBalance,
+        balanceAfter: userData.balance
+    });
+    
+    // Показываем сообщение
+    const action = amount > 0 ? 'Пополнено' : 'Списано';
+    showMessage(`${action} ${Math.abs(amount)} ₽. Баланс: ${userData.balance} ₽`, true);
 }
 
-// Обновление отображения баланса
-function updateBalanceDisplay() {
-    document.getElementById('balance').textContent = currentBalance.toLocaleString('ru-RU');
+// Синхронизация с сервером
+async function syncWithServer(operation = null) {
+    try {
+        const response = await fetch(`${SERVER_URL}/api/user/${userId}/sync`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                balance: userData.balance,
+                operation: operation
+            })
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                // Обновляем данные с сервера
+                userData.balance = data.user.balance;
+                updateUI();
+                
+                // Вибрация в Telegram
+                if (tg?.HapticFeedback) {
+                    tg.HapticFeedback.impactOccurred('light');
+                }
+                
+                return true;
+            }
+        } else if (response.status === 409) {
+            // Конфликт версий
+            const errorData = await response.json();
+            if (confirm(`Обнаружено расхождение!\n\nВаш баланс: ${userData.balance}\nНа сервере: ${errorData.serverBalance}\n\nИсправить?`)) {
+                userData.balance = errorData.serverBalance;
+                updateUI();
+                saveToLocalStorage();
+                showMessage('✅ Баланс исправлен по серверным данным', true);
+            }
+        }
+    } catch (error) {
+        console.log('Синхронизация не удалась');
+    }
+    
+    return false;
 }
 
-// Обновление отображения истории
-function updateHistoryDisplay() {
-    const historyList = document.getElementById('historyList');
-    if (!historyList) return;
+// Обновление интерфейса
+function updateUI() {
+    // Обновляем баланс
+    document.getElementById('balance').textContent = userData.balance.toLocaleString('ru-RU');
     
-    historyList.innerHTML = '';
+    // Обновляем имя
+    document.getElementById('username').textContent = userData.firstName || 'Пользователь';
+    document.getElementById('userid').textContent = userId;
     
-    history.slice(0, 10).forEach(item => {
-        const div = document.createElement('div');
-        div.className = 'history-item';
+    // Обновляем историю
+    updateHistory();
+}
+
+// Обновление истории операций
+function updateHistory() {
+    const historyEl = document.getElementById('historyList');
+    if (!historyEl) return;
+    
+    const recentHistory = userData.history.slice(-5).reverse();
+    
+    if (recentHistory.length === 0) {
+        historyEl.innerHTML = '<div class="empty-history">История операций пуста</div>';
+        return;
+    }
+    
+    historyEl.innerHTML = recentHistory.map(item => {
+        const date = new Date(item.date);
+        const time = date.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        const typeIcon = item.type === 'deposit' ? '➕' : '➖';
+        const typeClass = item.type === 'deposit' ? 'positive' : 'negative';
         
-        const typeIcon = item.type === 'deposit' ? '➕' : 
-                        item.type === 'withdraw' ? '➖' : '🔄';
-        const typeClass = item.type === 'deposit' ? 'positive' : 
-                         item.type === 'withdraw' ? 'negative' : 'neutral';
-        
-        div.innerHTML = `
-            <div>
-                <div style="font-size: 14px; opacity: 0.8">${item.date} ${item.time}</div>
-                <div class="${typeClass}">
-                    ${typeIcon} ${item.type === 'deposit' ? '+' : ''}${item.amount} руб.
+        return `
+            <div class="history-item">
+                <div>
+                    <div class="history-time">${time}</div>
+                    <div class="history-type ${typeClass}">${typeIcon} ${item.amount} ₽</div>
                 </div>
-            </div>
-            <div style="text-align: right">
-                <div style="font-weight: bold">${item.balanceAfter.toLocaleString('ru-RU')} руб.</div>
-                <div style="font-size: 12px; opacity: 0.7">было: ${item.balanceBefore.toLocaleString('ru-RU')}</div>
+                <div class="history-balance">${item.balanceAfter} ₽</div>
             </div>
         `;
-        
-        historyList.appendChild(div);
-    });
+    }).join('');
 }
 
-// Показать профиль
-function showProfile() {
-    const profileHtml = `
-        <div class="profile-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); display: flex; align-items: center; justify-content: center; z-index: 1000;">
-            <div style="background: white; padding: 20px; border-radius: 15px; max-width: 400px; width: 90%; color: #333;">
-                <h2 style="margin-bottom: 15px;">👤 Ваш профиль</h2>
-                <div style="margin-bottom: 15px;">
-                    <div><strong>ID:</strong> ${userId}</div>
-                    <div><strong>Имя:</strong> ${userData?.firstName || 'Не указано'}</div>
-                    <div><strong>Баланс:</strong> ${currentBalance.toLocaleString('ru-RU')} руб.</div>
-                    <div><strong>Операций:</strong> ${history.length}</div>
-                    <div><strong>Последняя синхронизация:</strong><br>${userData?.lastSync ? new Date(userData.lastSync).toLocaleString('ru-RU') : 'никогда'}</div>
-                </div>
-                <div style="display: flex; gap: 10px; margin-top: 20px;">
-                    <button onclick="closeProfile()" style="flex: 1; padding: 10px; background: #667eea; color: white; border: none; border-radius: 8px;">Закрыть</button>
-                    <button onclick="forceSync()" style="flex: 1; padding: 10px; background: #ff9800; color: white; border: none; border-radius: 8px;">🔄 Синхронизировать</button>
-                </div>
-            </div>
-        </div>
-    `;
+// Показ сообщения
+function showMessage(text, isSuccess) {
+    const messageEl = document.getElementById('message');
+    if (!messageEl) return;
     
-    const modal = document.createElement('div');
-    modal.innerHTML = profileHtml;
-    document.body.appendChild(modal);
+    messageEl.textContent = text;
+    messageEl.className = `message ${isSuccess ? 'success' : 'error'}`;
+    messageEl.style.display = 'block';
     
-    window.closeProfile = function() {
-        document.body.removeChild(modal);
-    };
+    setTimeout(() => {
+        messageEl.style.display = 'none';
+    }, 3000);
 }
 
 // Показать/скрыть загрузку
 function showLoading(show) {
     const loadingEl = document.getElementById('loading');
     if (loadingEl) {
-        loadingEl.style.display = show ? 'block' : 'none';
+        loadingEl.style.display = show ? 'flex' : 'none';
     }
 }
 
-// Показать статус
-function showStatus(message, isSuccess) {
-    const statusEl = document.getElementById('status');
-    if (!statusEl) return;
+// Кнопка синхронизации
+async function syncButton() {
+    showLoading(true);
+    const success = await syncWithServer();
+    showLoading(false);
     
-    statusEl.textContent = message;
-    statusEl.className = `sync-status ${isSuccess ? 'status-success' : 'status-error'}`;
-    statusEl.style.display = 'block';
-    
-    setTimeout(() => {
-        statusEl.style.display = 'none';
-    }, 3000);
+    if (success) {
+        showMessage('✅ Синхронизация успешна!', true);
+    } else {
+        showMessage('⚠️ Синхронизация не удалась', false);
+    }
 }
 
-// Инициализация при загрузке страницы
-document.addEventListener('DOMContentLoaded', () => {
-    initTelegramWebApp();
-    
-    // Добавляем кнопку профиля
-    const controls = document.querySelector('.controls');
-    if (controls) {
-        const profileBtn = document.createElement('button');
-        profileBtn.className = 'btn btn-primary';
-        profileBtn.innerHTML = '<span>👤</span> Профиль';
-        profileBtn.onclick = showProfile;
-        controls.appendChild(profileBtn);
+// Кнопка сброса
+function resetButton() {
+    if (confirm('Сбросить баланс к 10000 ₽?')) {
+        const oldBalance = userData.balance;
+        userData.balance = 10000;
+        
+        userData.history.push({
+            type: 'reset',
+            amount: 10000 - oldBalance,
+            date: new Date().toISOString(),
+            balanceBefore: oldBalance,
+            balanceAfter: 10000
+        });
+        
+        updateUI();
+        saveToLocalStorage();
+        syncWithServer();
+        showMessage('🔄 Баланс сброшен к 10000 ₽', true);
     }
-});
+}
+
+// Инициализация при загрузке
+document.addEventListener('DOMContentLoaded', initApp);
