@@ -1849,130 +1849,137 @@ p, h1, h2, h3, h4, h5, h6, span, div {
 }
 
 /* ============================= */
-/* УПРОЩЕННАЯ АНИМАЦИЯ КЕЙСОВ - ЛЕГКОЕ КАЧАНИЕ С ГАРАНТИРОВАННОЙ КЛИКАБЕЛЬНОСТЬЮ */
+/* УПРОЩЕННАЯ АНИМАЦИЯ КЕЙСОВ - ЛЕГКОЕ КАЧАНИЕ */
 /* ============================= */
 
-/* Контейнер для кейсов - БЕЗ 3D для кликабельности */
+/* Контейнер для кейсов */
 .cases-grid {
-    /* Убираем 3D перспективу для лучшей кликабельности */
-    perspective: none;
-    transform-style: flat;
+    perspective: 1200px;
+    transform-style: preserve-3d;
 }
 
-/* Анимация легкого поднятия вверх-вниз (БЕЗ 3D поворотов) */
-@keyframes gentleFloat {
+/* Анимация легкого качания влево */
+@keyframes gentleSwingLeft {
     0%, 100% {
         transform: 
             translateY(0px) 
+            rotateX(0deg) 
+            rotateY(0deg) 
             scale(1);
-        box-shadow: 
-            0 8px 16px rgba(0, 0, 0, 0.15);
+    }
+    25% {
+        transform: 
+            translateY(-8px) 
+            rotateX(2deg) 
+            rotateY(-5deg) /* Легкий поворот влево */
+            scale(1.02);
     }
     50% {
         transform: 
-            translateY(-15px) 
-            scale(1.05);
-        box-shadow: 
-            0 15px 25px rgba(0, 0, 0, 0.2);
+            translateY(-12px) 
+            rotateX(0deg) 
+            rotateY(-8deg) /* Легкий поворот влево */
+            scale(1.03);
+    }
+    75% {
+        transform: 
+            translateY(-8px) 
+            rotateX(-2deg) 
+            rotateY(-4deg) /* Возврат */
+            scale(1.02);
     }
 }
 
-/* Применение анимации к кейсам - БЕЗ 3D трансформаций */
+/* Анимация легкого качания вправо */
+@keyframes gentleSwingRight {
+    0%, 100% {
+        transform: 
+            translateY(0px) 
+            rotateX(0deg) 
+            rotateY(0deg) 
+            scale(1);
+    }
+    25% {
+        transform: 
+            translateY(-8px) 
+            rotateX(-2deg) 
+            rotateY(5deg) /* Легкий поворот вправо */
+            scale(1.02);
+    }
+    50% {
+        transform: 
+            translateY(-12px) 
+            rotateX(0deg) 
+            rotateY(8deg) /* Легкий поворот вправо */
+            scale(1.03);
+    }
+    75% {
+        transform: 
+            translateY(-8px) 
+            rotateX(2deg) 
+            rotateY(4deg) /* Возврат */
+            scale(1.02);
+    }
+}
+
+/* Применение анимации к кейсам */
 .case-card {
-    /* ВАЖНО: убираем все 3D трансформации */
-    transform-style: flat;
-    animation-duration: 4s; /* Быстрее анимация */
+    transform-style: preserve-3d;
+    animation-duration: 8s;
     animation-timing-function: ease-in-out;
     animation-iteration-count: infinite;
     animation-fill-mode: both;
     transition: all 0.3s ease;
-    
-    /* Гарантируем кликабельность */
-    position: relative;
-    z-index: 1;
-    pointer-events: auto !important;
-    
-    /* Создаем стабильную область для кликов */
-    min-height: 260px;
-    display: block;
 }
 
-/* Разные анимации для разных кейсов - плавное чередование */
-.case-card:nth-child(1) { 
-    animation-name: gentleFloat; 
+/* Разные анимации для разных кейсов - чередование */
+.case-card:nth-child(odd) { 
+    animation-name: gentleSwingLeft; 
     animation-delay: 0s; 
 }
-.case-card:nth-child(2) { 
-    animation-name: gentleFloat; 
-    animation-delay: 0.5s; 
-}
-.case-card:nth-child(3) { 
-    animation-name: gentleFloat; 
+.case-card:nth-child(even) { 
+    animation-name: gentleSwingRight; 
     animation-delay: 1s; 
 }
-.case-card:nth-child(4) { 
-    animation-name: gentleFloat; 
-    animation-delay: 1.5s; 
-}
-.case-card:nth-child(5) { 
-    animation-name: gentleFloat; 
-    animation-delay: 2s; 
-}
-.case-card:nth-child(6) { 
-    animation-name: gentleFloat; 
-    animation-delay: 2.5s; 
-}
 
-/* Эффект при наведении - БЕЗ 3D поворотов */
+/* Эффект при наведении - минимальный */
 .case-card:hover {
     animation-play-state: paused;
     transform: 
-        translateY(-20px) /* Больше поднимаем при наведении */
-        scale(1.1) !important; /* Только масштаб, без rotate */
-    z-index: 100;
+        translateY(-10px) 
+        rotateX(5deg) 
+        rotateY(0deg) 
+        scale(1.05) !important;
+    z-index: 10;
     
     /* Только легкая тень без свечения */
     box-shadow: 
-        0 20px 35px rgba(0, 0, 0, 0.25) !important;
+        0 10px 20px rgba(0, 0, 0, 0.2) !important;
     
-    /* Легкая золотая рамка (можно убрать если мешает) */
-    border-color: rgba(255, 215, 0, 0.5) !important;
+    /* Легкая золотая рамка */
+    border-color: rgba(255, 215, 0, 0.3) !important;
 }
 
-/* Обеспечиваем кликабельность всей области кейса */
-.case-card > * {
-    pointer-events: none; /* Отключаем события для дочерних элементов */
-}
-
-.case-card a,
-.case-card button,
-.case-card .click-area {
-    pointer-events: auto !important; /* Включаем события для кликабельных элементов */
-}
-
-/* Анимация для PNG текстур кейсов - легкая БЕЗ 3D */
+/* Анимация для PNG текстур кейсов - легкая */
 .case-texture {
-    /* Без 3D трансформаций */
-    transform-style: flat;
-    animation: textureFloat 3s infinite ease-in-out;
+    transform-style: preserve-3d;
+    animation: textureFloat 6s infinite ease-in-out;
 }
 
 @keyframes textureFloat {
     0%, 100% { 
-        transform: scale(1);
-        opacity: 1;
+        transform: translateZ(0px) scale(1);
     }
     50% { 
-        transform: scale(1.05); /* Только масштаб, БЕЗ translateZ */
-        opacity: 0.95;
+        transform: translateZ(10px) scale(1.02);
     }
 }
 
 /* Предметы в превью кейса - легкая анимация */
 .case-items-preview span {
     display: inline-block;
-    animation: itemBob 2.5s infinite ease-in-out;
-    animation-delay: calc(var(--item-index, 0) * 0.3s);
+    animation: itemBob 3s infinite ease-in-out;
+    animation-delay: calc(var(--item-index, 0) * 0.2s);
 }
 
 @keyframes itemBob {
@@ -1980,107 +1987,82 @@ p, h1, h2, h3, h4, h5, h6, span, div {
         transform: translateY(0px); 
     }
     50% { 
-        transform: translateY(-3px); /* Минимальное движение */
+        transform: translateY(-4px); 
     }
 }
 
 /* Мобильная адаптация анимации */
 @media (max-width: 768px) {
     .case-card {
-        animation-duration: 5s; /* Медленнее на мобильных */
-        min-height: 240px; /* Фиксированная высота */
+        animation-duration: 10s;
     }
     
     .case-card:hover {
         transform: 
-            translateY(-12px) 
-            scale(1.08) !important;
+            translateY(-6px) 
+            rotateX(3deg) 
+            rotateY(0deg) 
+            scale(1.03) !important;
         box-shadow: 
-            0 12px 20px rgba(0, 0, 0, 0.2) !important;
+            0 5px 15px rgba(0, 0, 0, 0.15) !important;
     }
     
-    @keyframes gentleFloat {
+    @keyframes gentleSwingLeft {
         0%, 100% {
             transform: 
                 translateY(0px) 
+                rotateY(0deg) 
                 scale(1);
         }
         50% {
             transform: 
-                translateY(-10px) 
-                scale(1.04);
+                translateY(-8px) 
+                rotateY(-6deg) 
+                scale(1.02);
+        }
+    }
+    
+    @keyframes gentleSwingRight {
+        0%, 100% {
+            transform: 
+                translateY(0px) 
+                rotateY(0deg) 
+                scale(1);
+        }
+        50% {
+            transform: 
+                translateY(-8px) 
+                rotateY(6deg) 
+                scale(1.02);
         }
     }
 }
 
-/* Убираем все эффекты свечения и блеска которые мешают */
+/* Убираем все эффекты свечения и блеска */
 .case-card::after,
 .case-card::before,
 .case-glow {
     display: none !important;
-    pointer-events: none !important;
 }
 
 /* Убираем сложные тени и свечения из существующих стилей */
-.case-card {
-    box-shadow: 
-        0 8px 16px rgba(0, 0, 0, 0.15) !important; /* Без внутреннего свечения */
-}
-
+.case-card,
 .case-card:hover {
     box-shadow: 
-        0 20px 35px rgba(0, 0, 0, 0.25) !important; /* Без внутреннего свечения */
+        0 8px 16px rgba(0, 0, 0, 0.15),
+        inset 0 0 20px rgba(255, 255, 255, 0.05) !important;
 }
 
-/* Простая анимация для иконки БЕЗ 3D */
+/* Простая анимация для иконки */
 .case-icon {
-    animation: iconFloat 3s infinite ease-in-out;
+    animation: iconFloat 4s infinite ease-in-out;
 }
 
 @keyframes iconFloat {
     0%, 100% { 
-        transform: rotate(0deg); 
+        transform: translateZ(0px) rotate(0deg); 
     }
     50% { 
-        transform: rotate(3deg); /* Только rotate, БЕЗ translateZ */
+        transform: translateZ(8px) rotate(5deg); 
     }
-}
-
-/* ВАЖНО: Убираем backface-visibility */
-.case-card,
-.case-texture,
-.case-icon,
-.case-image {
-    backface-visibility: visible !important; /* Гарантируем видимость */
-    -webkit-backface-visibility: visible !important;
-}
-
-/* Гарантируем что кейс всегда кликабелен */
-@media (hover: none) and (pointer: coarse) {
-    /* Для тач-устройств */
-    .case-card {
-        animation-play-state: running; /* Всегда анимируем */
-        touch-action: manipulation; /* Оптимизация для тач */
-    }
-    
-    .case-card:active {
-        transform: 
-            translateY(-10px) 
-            scale(1.05) !important;
-        transition: transform 0.1s ease;
-    }
-}
-
-/* Фикс для Safari */
-@supports (-webkit-touch-callout: none) {
-    .case-card {
-        -webkit-transform-style: flat;
-        -webkit-backface-visibility: visible;
-    }
-}
-
-/* Гарантируем что кейс не "схлопывается" при анимации */
-.case-card {
-    transform-origin: center center; /* Центральная точка трансформации */
-    will-change: transform; /* Оптимизация для анимации */
 }
