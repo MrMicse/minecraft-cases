@@ -1848,364 +1848,132 @@ p, h1, h2, h3, h4, h5, h6, span, div {
     animation: textureLoad 0.3s ease-out;
 }
 
-/* ============================= */
-/* АНИМАЦИЯ КЕЙСОВ - ПАРАЛЛАКС ЭФФЕКТ */
-/* ============================= */
+/* Анимация для PNG-текстур кейсов */
+.case-texture {
+    width: 120px;
+    height: 120px;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3));
+    transition: all 0.3s ease;
+    
+    /* НОВАЯ АНИМАЦИЯ: плавное вращение и поднятие */
+    animation: 
+        caseTextureFloat 6s ease-in-out infinite,
+        caseTextureRotate 12s linear infinite;
+    transform-style: preserve-3d;
+    will-change: transform;
+}
 
-/* Контейнер для кейсов с перспективой */
-.cases-grid {
+/* Анимация плавного поднятия и опускания */
+@keyframes caseTextureFloat {
+    0%, 100% {
+        transform: 
+            translateY(0) 
+            rotateX(0deg) 
+            rotateY(0deg)
+            scale(1);
+    }
+    25% {
+        transform: 
+            translateY(-8px) 
+            rotateX(5deg) 
+            rotateY(5deg)
+            scale(1.05);
+    }
+    50% {
+        transform: 
+            translateY(-4px) 
+            rotateX(0deg) 
+            rotateY(10deg)
+            scale(1.02);
+    }
+    75% {
+        transform: 
+            translateY(-6px) 
+            rotateX(-5deg) 
+            rotateY(5deg)
+            scale(1.04);
+    }
+}
+
+/* Анимация медленного вращения вокруг своей оси */
+@keyframes caseTextureRotate {
+    0% {
+        transform: 
+            translateY(0) 
+            rotateY(0deg) 
+            rotateX(0deg);
+    }
+    50% {
+        transform: 
+            translateY(-5px) 
+            rotateY(180deg) 
+            rotateX(5deg);
+    }
+    100% {
+        transform: 
+            translateY(0) 
+            rotateY(360deg) 
+            rotateX(0deg);
+    }
+}
+
+/* Добавляем 3D-эффект при наведении на кейс */
+.case-card:hover .case-texture {
+    animation: 
+        caseTextureHover 2s ease-in-out infinite,
+        caseTextureRotateFast 4s linear infinite;
+    filter: 
+        drop-shadow(0 8px 20px rgba(255, 215, 0, 0.4))
+        brightness(1.2);
+}
+
+
+@keyframes caseTextureRotateFast {
+    0% {
+        transform: 
+            translateY(-10px) 
+            rotateY(0deg);
+    }
+    100% {
+        transform: 
+            translateY(-10px) 
+            rotateY(360deg);
+    }
+}
+
+/* Для более плавной анимации добавляем перспективу */
+.case-image {
     perspective: 1000px;
     transform-style: preserve-3d;
 }
 
-/* Индивидуальная анимация для каждого кейса */
-@keyframes floatRotate {
-    0% {
-        transform: 
-            translateY(0px) 
-            rotateX(0deg) 
-            rotateY(0deg) 
-            scale(1);
-        box-shadow: 
-            0 5px 15px rgba(0, 0, 0, 0.3),
-            inset 0 0 30px rgba(255, 255, 255, 0.05);
-    }
-    25% {
-        transform: 
-            translateY(-12px) 
-            rotateX(5deg) 
-            rotateY(45deg) 
-            scale(1.02);
-        box-shadow: 
-            0 8px 25px rgba(75, 204, 243, 0.2),
-            inset 0 0 40px rgba(255, 215, 0, 0.1);
-    }
-    50% {
-        transform: 
-            translateY(-20px) 
-            rotateX(0deg) 
-            rotateY(90deg) 
-            scale(1.05);
-        box-shadow: 
-            0 12px 30px rgba(0, 210, 106, 0.25),
-            inset 0 0 50px rgba(255, 215, 0, 0.15);
-    }
-    75% {
-        transform: 
-            translateY(-12px) 
-            rotateX(-5deg) 
-            rotateY(135deg) 
-            scale(1.02);
-        box-shadow: 
-            0 8px 25px rgba(136, 71, 255, 0.2),
-            inset 0 0 40px rgba(255, 215, 0, 0.1);
-    }
-    100% {
-        transform: 
-            translateY(0px) 
-            rotateX(0deg) 
-            rotateY(180deg) 
-            scale(1);
-        box-shadow: 
-            0 5px 15px rgba(0, 0, 0, 0.3),
-            inset 0 0 30px rgba(255, 255, 255, 0.05);
-    }
-}
-
-@keyframes floatRotate2 {
-    0% {
-        transform: 
-            translateY(0px) 
-            rotateX(0deg) 
-            rotateY(180deg) 
-            scale(1);
-    }
-    25% {
-        transform: 
-            translateY(-12px) 
-            rotateX(-5deg) 
-            rotateY(225deg) 
-            scale(1.02);
-    }
-    50% {
-        transform: 
-            translateY(-20px) 
-            rotateX(0deg) 
-            rotateY(270deg) 
-            scale(1.05);
-    }
-    75% {
-        transform: 
-            translateY(-12px) 
-            rotateX(5deg) 
-            rotateY(315deg) 
-            scale(1.02);
-    }
-    100% {
-        transform: 
-            translateY(0px) 
-            rotateX(0deg) 
-            rotateY(360deg) 
-            scale(1);
-    }
-}
-
-/* Применение анимации к кейсам */
-.case-card {
-    transform-style: preserve-3d;
-    animation-duration: 8s;
-    animation-timing-function: cubic-bezier(0.45, 0.05, 0.55, 0.95);
-    animation-iteration-count: infinite;
-    animation-fill-mode: both;
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* Разные анимации для разных кейсов */
-.case-card:nth-child(1) { 
-    animation-name: floatRotate; 
-    animation-delay: 0s; 
-}
-.case-card:nth-child(2) { 
-    animation-name: floatRotate2; 
-    animation-delay: 0.5s; 
-}
-.case-card:nth-child(3) { 
-    animation-name: floatRotate; 
-    animation-delay: 1s; 
-}
-.case-card:nth-child(4) { 
-    animation-name: floatRotate2; 
-    animation-delay: 1.5s; 
-}
-.case-card:nth-child(5) { 
-    animation-name: floatRotate; 
-    animation-delay: 2s; 
-}
-.case-card:nth-child(6) { 
-    animation-name: floatRotate2; 
-    animation-delay: 2.5s; 
-}
-
-/* Эффект при наведении - приостановка анимации и увеличение */
-.case-card:hover {
-    animation-play-state: paused;
-    transform: 
-        translateY(-25px) 
-        rotateX(10deg) 
-        rotateY(0deg) 
-        scale(1.15) !important;
-    z-index: 100;
-    box-shadow: 
-        0 20px 40px rgba(255, 215, 0, 0.4),
-        0 0 80px rgba(75, 204, 243, 0.3),
-        inset 0 0 60px rgba(255, 215, 0, 0.2) !important;
-}
-
-/* Эффект блеска на кейсе */
-.case-card::after {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: linear-gradient(
-        45deg,
-        transparent 30%,
-        rgba(255, 255, 255, 0.1) 50%,
-        transparent 70%
-    );
-    transform: rotate(45deg);
-    animation: shine 8s infinite linear;
-    pointer-events: none;
-    opacity: 0.3;
-}
-
-@keyframes shine {
-    0% { transform: translateX(-100%) translateY(-100%) rotate(45deg); }
-    100% { transform: translateX(100%) translateY(100%) rotate(45deg); }
-}
-
-/* Дополнительный внутренний свет */
-.case-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: radial-gradient(
-        ellipse at center,
-        rgba(255, 255, 255, 0.15) 0%,
-        transparent 70%
-    );
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    border-radius: 12px;
-    pointer-events: none;
-}
-
-.case-card:hover::before {
-    opacity: 1;
-}
-
-/* Анимация для иконки внутри кейса */
-.case-icon {
-    transform-style: preserve-3d;
-    animation: iconFloat 4s infinite ease-in-out;
-}
-
-@keyframes iconFloat {
-    0%, 100% { 
-        transform: translateZ(0px) rotate(0deg); 
-        filter: drop-shadow(0 5px 15px rgba(0, 0, 0, 0.7));
-    }
-    50% { 
-        transform: translateZ(20px) rotate(10deg); 
-        filter: drop-shadow(0 10px 25px rgba(255, 215, 0, 0.5));
-    }
-}
-
-/* Анимация для PNG текстур кейсов */
-.case-texture {
-    transform-style: preserve-3d;
-    animation: textureFloat 6s infinite ease-in-out;
-}
-
-@keyframes textureFloat {
-    0%, 100% { 
-        transform: 
-            translateZ(0px) 
-            rotate(0deg) 
-            scale(1);
-        filter: 
-            drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3)) 
-            brightness(1);
-    }
-    25% { 
-        transform: 
-            translateZ(15px) 
-            rotate(5deg) 
-            scale(1.05);
-        filter: 
-            drop-shadow(0 8px 20px rgba(75, 204, 243, 0.4)) 
-            brightness(1.1);
-    }
-    50% { 
-        transform: 
-            translateZ(25px) 
-            rotate(0deg) 
-            scale(1.1);
-        filter: 
-            drop-shadow(0 12px 25px rgba(0, 210, 106, 0.5)) 
-            brightness(1.2);
-    }
-    75% { 
-        transform: 
-            translateZ(15px) 
-            rotate(-5deg) 
-            scale(1.05);
-        filter: 
-            drop-shadow(0 8px 20px rgba(136, 71, 255, 0.4)) 
-            brightness(1.1);
-    }
-}
-
-/* Предметы в превью кейса тоже анимируем */
-.case-items-preview span {
-    display: inline-block;
-    animation: itemBob 3s infinite ease-in-out;
-    animation-delay: calc(var(--item-index, 0) * 0.2s);
-}
-
-@keyframes itemBob {
-    0%, 100% { transform: translateY(0px) rotate(0deg); }
-    50% { transform: translateY(-8px) rotate(5deg); }
-}
-
-/* Параллакс эффект для всей сетки при скролле */
-.cases-grid {
-    transition: transform 0.1s ease-out;
-}
-
-/* Мобильная адаптация анимации */
+/* Адаптация для мобильных устройств */
 @media (max-width: 768px) {
-    .case-card {
-        animation-duration: 10s;
+    .case-texture {
+        width: 100px;
+        height: 100px;
+        animation: 
+            caseTextureFloatMobile 6s ease-in-out infinite,
+            caseTextureRotate 16s linear infinite;
     }
     
-    .case-card:hover {
-        transform: 
-            translateY(-15px) 
-            rotateX(5deg) 
-            rotateY(0deg) 
-            scale(1.08) !important;
-    }
-    
-    @keyframes floatRotate {
-        0% {
+    @keyframes caseTextureFloatMobile {
+        0%, 100% {
             transform: 
-                translateY(0px) 
+                translateY(0) 
                 rotateX(0deg) 
-                rotateY(0deg) 
-                scale(1);
+                rotateY(0deg)
+                scale(0.9);
         }
         50% {
             transform: 
-                translateY(-15px) 
-                rotateX(0deg) 
-                rotateY(90deg) 
-                scale(1.03);
-        }
-        100% {
-            transform: 
-                translateY(0px) 
-                rotateX(0deg) 
-                rotateY(180deg) 
-                scale(1);
+                translateY(-6px) 
+                rotateX(3deg) 
+                rotateY(5deg)
+                scale(0.95);
         }
     }
-    
-    @keyframes floatRotate2 {
-        0% {
-            transform: 
-                translateY(0px) 
-                rotateX(0deg) 
-                rotateY(180deg) 
-                scale(1);
-        }
-        50% {
-            transform: 
-                translateY(-15px) 
-                rotateX(0deg) 
-                rotateY(270deg) 
-                scale(1.03);
-        }
-        100% {
-            transform: 
-                translateY(0px) 
-                rotateX(0deg) 
-                rotateY(360deg) 
-                scale(1);
-        }
-    }
-}
-
-/* Эффект свечения для редких кейсов */
-.case-card[data-rarity="epic"] {
-    animation-timing-function: cubic-bezier(0.68, -0.55, 0.265, 1.55);
-}
-
-.case-card[data-rarity="legendary"] {
-    animation-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
-}
-
-.case-card[data-rarity="legendary"]::after {
-    background: linear-gradient(
-        45deg,
-        transparent 30%,
-        rgba(255, 215, 0, 0.3) 50%,
-        transparent 70%
-    );
-    opacity: 0.5;
 }
