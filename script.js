@@ -243,11 +243,43 @@ async function initApp() {
         // Загружаем текстуры
         await loadTextures();
         
-        // Сначала пытаемся загрузить из localStorage для быстрого отображения
+        // Всегда загружаем демо-данные кейсов (они статичные)
+        loadDemoCases();
+        
+        // Загружаем пользовательские данные из localStorage
         loadFromLocalStorage();
         
-        // Затем синхронизируемся с сервером
-        await syncWithServer();
+        // Затем пытаемся синхронизироваться с сервером
+        const serverData = await syncWithServer();
+        
+        if (serverData && serverData.success) {
+            console.log('✅ Данные с сервера получены');
+            
+            // Обновляем баланс пользователя с сервера (приоритет сервера)
+            if (serverData.user) {
+                userData.balance = serverData.user.balance || userData.balance;
+                userData.experience = serverData.user.experience || userData.experience;
+                userData.level = serverData.user.level || userData.level;
+            }
+            
+            // Обновляем инвентарь с сервера
+            if (serverData.inventory) {
+                inventoryData = serverData.inventory;
+            }
+            
+            // Кейсы берем с сервера если есть, иначе оставляем демо
+            if (serverData.cases && serverData.cases.length > 0) {
+                casesData = serverData.cases;
+                console.log(`✅ Загружено ${casesData.length} кейсов с сервера`);
+            } else {
+                console.log('⚠️ Кейсы с сервера не получены, используем демо-кейсы');
+            }
+        } else {
+            console.log('⚠️ Сервер не доступен, используем локальные данные');
+        }
+        
+        // Сохраняем все данные в localStorage
+        saveToLocalStorage();
         
         // Обновляем UI
         updateUI();
@@ -255,95 +287,24 @@ async function initApp() {
     } catch (error) {
         console.error('Ошибка инициализации:', error);
         alert('Ошибка загрузки данных. Пожалуйста, обновите страницу.');
-        loadDemoData();
+        // В любом случае показываем что-то
         updateUI();
     }
     
     setTimeout(() => {
         hideLoading();
         console.log('Приложение загружено!');
-        console.log('Данные пользователя:', userData);
-        console.log('Кейсы:', casesData.length);
+        console.log('Данные:', {
+            balance: userData.balance,
+            casesCount: casesData.length,
+            inventoryCount: inventoryData.length
+        });
     }, 500);
 }
 
-// Загрузка из localStorage
-function loadFromLocalStorage() {
-    const savedData = localStorage.getItem('minecraftCaseData');
-    if (savedData) {
-        try {
-            const parsed = JSON.parse(savedData);
-            userData.balance = parsed.balance || 0;
-            userData.experience = parsed.experience || 0;
-            userData.level = parsed.level || 1;
-            inventoryData = parsed.inventory || [];
-            console.log('Данные загружены из localStorage');
-        } catch (e) {
-            console.error('Ошибка загрузки из localStorage:', e);
-        }
-    }
-}
-
-// Сохранение в localStorage
-function saveToLocalStorage() {
-    const data = {
-        balance: userData.balance,
-        experience: userData.experience,
-        level: userData.level,
-        inventory: inventoryData,
-        cases: casesData
-    };
-    localStorage.setItem('minecraftCaseData', JSON.stringify(data));
-}
-
-// Синхронизация с сервером через Telegram Web App
-async function syncWithServer() {
-    console.log('Синхронизация с сервером...');
-    
-    try {
-        // Отправляем запрос на синхронизацию через Telegram Web App
-        const response = await sendDataToBot('init', {});
-        
-        if (response && response.success) {
-            // Используем данные с сервера
-            userData.balance = response.user.balance || 0;
-            userData.experience = response.user.experience || 0;
-            userData.level = response.user.level || 1;
-            
-            inventoryData = response.inventory || [];
-            casesData = response.cases || [];
-            
-            // Если кейсы не пришли с сервера, загружаем демо
-            if (!casesData || casesData.length === 0) {
-                console.warn('Кейсы не получены с сервера, загружаем демо');
-                loadDemoData();
-            }
-            
-            // Сохраняем в localStorage
-            saveToLocalStorage();
-            
-            console.log('Данные синхронизированы с сервером:', {
-                balance: userData.balance,
-                inventoryCount: inventoryData.length,
-                casesCount: casesData.length
-            });
-            
-            return response;
-        } else {
-            console.error('Ошибка синхронизации:', response?.error);
-            loadDemoData();
-            return null;
-        }
-    } catch (error) {
-        console.error('Ошибка синхронизации:', error);
-        loadDemoData();
-        return null;
-    }
-}
-
-// Загрузка демо-данных
-function loadDemoData() {
-    console.log('Загрузка демо-данных...');
+// Загрузка демо-кейсов (всегда загружаются)
+function loadDemoCases() {
+    console.log('Загрузка демо-кейсов...');
     
     casesData = [
         {
@@ -402,12 +363,72 @@ function loadDemoData() {
         }
     ];
     
-    // Если данных нет, устанавливаем начальные значения
-    if (userData.balance === 0) {
+    console.log(`✅ Загружено ${casesData.length} демо-кейсов`);
+}
+
+// Загрузка из localStorage
+function loadFromLocalStorage() {
+    const savedData = localStorage.getItem('minecraftCaseData');
+    if (savedData) {
+        try {
+            const parsed = JSON.parse(savedData);
+            userData.balance = parsed.balance || 10000;
+            userData.experience = parsed.experience || 0;
+            userData.level = parsed.level || 1;
+            inventoryData = parsed.inventory || [];
+            
+            // Кейсы из localStorage не загружаем - всегда используем актуальные
+            console.log('✅ Данные пользователя загружены из localStorage');
+        } catch (e) {
+            console.error('❌ Ошибка загрузки из localStorage:', e);
+            // Устанавливаем значения по умолчанию
+            userData.balance = 10000;
+            userData.experience = 0;
+            userData.level = 1;
+            inventoryData = [];
+        }
+    } else {
+        // Первый запуск - устанавливаем значения по умолчанию
         userData.balance = 10000;
+        userData.experience = 0;
+        userData.level = 1;
+        inventoryData = [];
+        console.log('🆕 Первый запуск, установлены значения по умолчанию');
     }
+}
+
+// Сохранение в localStorage
+function saveToLocalStorage() {
+    const data = {
+        balance: userData.balance,
+        experience: userData.experience,
+        level: userData.level,
+        inventory: inventoryData,
+        cases: casesData // тоже сохраняем кейсы
+    };
+    localStorage.setItem('minecraftCaseData', JSON.stringify(data));
+    console.log('💾 Данные сохранены в localStorage');
+}
+
+// Синхронизация с сервером через Telegram Web App
+async function syncWithServer() {
+    console.log('🔄 Синхронизация с сервером...');
     
-    console.log('Демо-данные загружены');
+    try {
+        // Отправляем запрос на синхронизацию через Telegram Web App
+        const response = await sendDataToBot('init', {});
+        
+        if (response && response.success) {
+            console.log('✅ Синхронизация с сервером успешна');
+            return response;
+        } else {
+            console.error('❌ Ошибка синхронизации:', response?.error);
+            return null;
+        }
+    } catch (error) {
+        console.error('❌ Ошибка синхронизации:', error);
+        return null;
+    }
 }
 
 // Отправка данных боту через Web App
@@ -419,7 +440,7 @@ async function sendDataToBot(action, data) {
             return;
         }
         
-        console.log(`Отправка данных боту: ${action}`, data);
+        console.log(`📤 Отправка данных боту: ${action}`, data);
         
         // Подготавливаем данные для отправки
         const requestData = JSON.stringify({
@@ -439,12 +460,12 @@ async function sendDataToBot(action, data) {
             if (event.data && event.data.type === 'message') {
                 try {
                     const message = event.data;
-                    console.log('Получено сообщение от бота:', message);
+                    console.log('📥 Получено сообщение от бота:', message);
                     
                     if (message.text) {
                         try {
                             const parsedData = JSON.parse(message.text);
-                            console.log('Парсинг ответа от бота:', parsedData);
+                            console.log('✅ Парсинг ответа от бота:', parsedData);
                             
                             // Удаляем обработчик после получения ответа
                             if (window._botResponseHandler) {
@@ -453,7 +474,7 @@ async function sendDataToBot(action, data) {
                             }
                             resolve(parsedData);
                         } catch (e) {
-                            console.error('Ошибка парсинга JSON:', e);
+                            console.error('❌ Ошибка парсинга JSON:', e);
                             if (window._botResponseHandler) {
                                 window.removeEventListener('message', window._botResponseHandler);
                                 window._botResponseHandler = null;
@@ -462,7 +483,7 @@ async function sendDataToBot(action, data) {
                         }
                     }
                 } catch (e) {
-                    console.error('Ошибка обработки сообщения:', e);
+                    console.error('❌ Ошибка обработки сообщения:', e);
                     if (window._botResponseHandler) {
                         window.removeEventListener('message', window._botResponseHandler);
                         window._botResponseHandler = null;
@@ -480,7 +501,7 @@ async function sendDataToBot(action, data) {
         
         // Таймаут на случай если ответ не придет
         setTimeout(() => {
-            console.warn('Таймаут запроса, используем демо-режим');
+            console.warn('⏱️ Таймаут запроса, используем демо-режим');
             if (window._botResponseHandler) {
                 window.removeEventListener('message', window._botResponseHandler);
                 window._botResponseHandler = null;
@@ -492,7 +513,7 @@ async function sendDataToBot(action, data) {
 
 // Обработка действий в демо-режиме
 function handleDemoMode(action, data) {
-    console.log(`Демо-режим: ${action}`, data);
+    console.log(`🦺 Демо-режим: ${action}`, data);
     
     switch (action) {
         case 'init':
@@ -525,7 +546,7 @@ function handleDemoMode(action, data) {
             
             const wonItem = generateWonItem(caseItem);
             
-            // Сразу обновляем баланс локально
+            // Обновляем баланс локально
             userData.balance -= caseItem.price;
             
             // Добавляем предмет в инвентарь
@@ -564,7 +585,7 @@ function handleDemoMode(action, data) {
             
             const soldItem = inventoryData[itemIndex];
             
-            // Сразу обновляем баланс локально
+            // Обновляем баланс локально
             userData.balance += soldItem.price;
             
             // Удаляем предмет из инвентаря
@@ -613,15 +634,24 @@ function updateUI() {
 
 // Отрисовка кейсов с PNG
 function renderCases() {
-    console.log('Отрисовка кейсов...');
+    console.log('🎨 Отрисовка кейсов...');
     if (!elements.casesGrid) return;
     
     elements.casesGrid.innerHTML = '';
     
-    // Если нет данных о кейсах, используем демо
+    // Всегда должны быть кейсы (демо или с сервера)
     if (!casesData || casesData.length === 0) {
-        console.warn('Нет данных о кейсах, загружаем демо');
-        loadDemoData();
+        console.error('❌ Нет данных о кейсах!');
+        elements.casesGrid.innerHTML = `
+            <div style="grid-column: 1/-1; text-align: center; padding: 40px;">
+                <div style="font-size: 3rem; margin-bottom: 20px;">⚠️</div>
+                <p style="color: var(--text-secondary); font-size: 1.1rem; margin-bottom: 10px;">Кейсы временно недоступны</p>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin-top: 10px;">
+                    Пожалуйста, обновите страницу
+                </p>
+            </div>
+        `;
+        return;
     }
     
     casesData.forEach((caseItem, index) => {
@@ -690,7 +720,7 @@ function renderCases() {
         elements.casesGrid.appendChild(caseCard);
     });
     
-    console.log('Кейсы отрисованы:', casesData.length);
+    console.log(`✅ Кейсы отрисованы: ${casesData.length} шт`);
 }
 
 // Получение предметов для превью кейса
@@ -721,7 +751,7 @@ function getPreviewItems(caseItem) {
 
 // Отрисовка инвентаря
 function renderInventory() {
-    console.log('Отрисовка инвентаря...');
+    console.log('🎨 Отрисовка инвентаря...');
     if (!elements.inventoryGrid) return;
     
     elements.inventoryGrid.innerHTML = '';
@@ -736,7 +766,7 @@ function renderInventory() {
                 </p>
             </div>
         `;
-        console.log('Инвентарь пуст');
+        console.log('📦 Инвентарь пуст');
         return;
     }
     
@@ -758,12 +788,12 @@ function renderInventory() {
         elements.inventoryGrid.appendChild(itemElement);
     });
     
-    console.log('Инвентарь отрисован:', inventoryData.length, 'предметов');
+    console.log(`✅ Инвентарь отрисован: ${inventoryData.length} предметов`);
 }
 
 // Открытие модального окна кейса
 function openCaseModal(caseItem) {
-    console.log('Открытие модального окна кейса:', caseItem.name);
+    console.log('🎁 Открытие модального окна кейса:', caseItem.name);
     currentCase = caseItem;
     
     // Сбрасываем состояние рулетки
@@ -832,7 +862,7 @@ function createCaseItemsPreview(caseItem) {
 
 // Подготовка рулетки для кейса
 function prepareRouletteForCase(caseItem) {
-    console.log('Подготовка рулетки для кейса:', caseItem.name);
+    console.log('🎰 Подготовка рулетки для кейса:', caseItem.name);
     
     // Генерируем начальную последовательность предметов
     rouletteItems = generateInitialRouletteSequence(caseItem);
@@ -889,7 +919,7 @@ function generateInitialRouletteSequence(caseItem) {
 
 // Отрисовка предметов в рулетке с поддержкой PNG
 function renderRouletteItems() {
-    console.log('Отрисовка рулетки...');
+    console.log('🎨 Отрисовка рулетки...');
     if (!elements.itemsTrack) return;
     
     elements.itemsTrack.innerHTML = '';
@@ -914,9 +944,9 @@ function renderRouletteItems() {
 
 // Открытие кейса
 async function openCase() {
-    console.log('Открытие кейса...');
+    console.log('🎁 Открытие кейса...');
     if (!currentCase || !userData || isOpening) {
-        console.log('Не могу открыть кейс');
+        console.log('❌ Не могу открыть кейс');
         return;
     }
     
@@ -925,7 +955,7 @@ async function openCase() {
         return;
     }
     
-    console.log('Отправляем запрос на открытие кейса...');
+    console.log('📤 Отправляем запрос на открытие кейса...');
     
     // Отключаем кнопку открытия
     elements.openCaseBtn.disabled = true;
@@ -938,7 +968,7 @@ async function openCase() {
             case_id: currentCase.id
         });
         
-        console.log('Ответ от сервера:', response);
+        console.log('📥 Ответ от сервера:', response);
         
         if (response && response.success) {
             // Обновляем данные с сервера
@@ -955,7 +985,7 @@ async function openCase() {
             // Сохраняем в localStorage
             saveToLocalStorage();
             
-            console.log('Кейс успешно открыт');
+            console.log('✅ Кейс успешно открыт');
             
             // Запускаем анимацию рулетки
             await startRouletteAnimation();
@@ -967,20 +997,22 @@ async function openCase() {
             updateUI();
             
         } else {
-            console.error('Ошибка открытия кейса:', response?.error);
+            console.error('❌ Ошибка открытия кейса:', response?.error);
             alert(response?.error || 'Ошибка при открытии кейса');
             
             // Откатываем изменения
             userData.balance += currentCase.price;
+            saveToLocalStorage();
             updateUI();
         }
         
     } catch (error) {
-        console.error('Ошибка при открытии кейса:', error);
+        console.error('❌ Ошибка при открытии кейса:', error);
         alert('Ошибка соединения с сервером');
         
         // Откатываем изменения
         userData.balance += currentCase.price;
+        saveToLocalStorage();
         updateUI();
     } finally {
         // Восстанавливаем кнопку
@@ -1078,7 +1110,7 @@ function generateFullRouletteSequence(wonItem) {
 
 // Запуск анимации рулетки
 function startRouletteAnimationSequence(resolve) {
-    console.log('Запуск анимации рулетки');
+    console.log('🎰 Запуск анимации рулетки');
     isScrolling = true;
     
     if (!elements.rouletteContainer || !elements.itemsTrack) {
@@ -1185,7 +1217,7 @@ function getRouletteMeasurements() {
 
 // Завершение анимации рулетки
 function finishRouletteAnimation(resolve) {
-    console.log('Завершение анимации рулетки');
+    console.log('✅ Завершение анимации рулетки');
     isScrolling = false;
     
     setTimeout(() => {
@@ -1204,7 +1236,7 @@ function finishRouletteAnimation(resolve) {
 
 // Показ результата с PNG изображением
 function showResult(item) {
-    console.log('Показ результата:', item);
+    console.log('🏆 Показ результата:', item);
     const resultCard = elements.resultModal?.querySelector('.result-modal');
     if (resultCard) {
         resultCard.classList.remove('result-modal--active');
@@ -1290,7 +1322,7 @@ function viewItem(item) {
 
 // Открытие модального окна инвентаря
 function openInventoryModal() {
-    console.log('Открытие инвентаря');
+    console.log('📦 Открытие инвентаря');
     renderInventory();
     showModal(elements.inventoryModal);
 }
@@ -1328,7 +1360,7 @@ function hideLoading() {
 
 // Инициализация обработчиков событий
 function initEventListeners() {
-    console.log('Настройка обработчиков событий...');
+    console.log('🎮 Настройка обработчиков событий...');
     
     // Вспомогательная функция для добавления touch-обработчиков
     function addTouchHandlers(element, handler) {
@@ -1426,12 +1458,12 @@ function initEventListeners() {
         });
     });
     
-    console.log('Все обработчики настроены');
+    console.log('✅ Все обработчики настроены');
 }
 
 // Инициализация при загрузке DOM
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM загружен, запускаем приложение...');
+    console.log('🚀 DOM загружен, запускаем приложение...');
     
     // Инициализация приложения
     initApp();
@@ -1439,5 +1471,5 @@ document.addEventListener('DOMContentLoaded', function() {
     // Настройка обработчиков событий
     initEventListeners();
     
-    console.log('Приложение запущено');
+    console.log('✅ Приложение запущено');
 });
