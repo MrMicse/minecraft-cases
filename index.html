@@ -2,168 +2,215 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Minecraft Case Opening - ТЕСТ</title>
-    <link rel="stylesheet" href="style.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Rubik:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Баланс WebApp</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        .test-controls {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-top: 20px;
-            padding: 15px;
-            background: rgba(0,0,0,0.3);
-            border-radius: 10px;
-            border: 2px solid #4b69ff;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
         
-        .test-btn {
-            padding: 10px 15px;
-            background: linear-gradient(135deg, #4b69ff, #1a47ff);
-            border: none;
-            border-radius: 8px;
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
             color: white;
+        }
+        
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+        }
+        
+        .user-info {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .balance-card {
+            background: white;
+            color: #333;
+            padding: 25px;
+            border-radius: 20px;
+            text-align: center;
+            margin-bottom: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .balance-amount {
+            font-size: 48px;
+            font-weight: bold;
+            margin: 10px 0;
+            color: #667eea;
+        }
+        
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        
+        .btn {
+            padding: 18px;
+            border: none;
+            border-radius: 15px;
+            font-size: 18px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s ease;
-            flex: 1;
-            min-width: 150px;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
         }
         
-        .test-btn:hover {
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-success {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .btn-warning {
+            background: #FF9800;
+            color: white;
+        }
+        
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+        
+        .btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(75, 105, 255, 0.4);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
         }
         
-        .test-btn.danger {
-            background: linear-gradient(135deg, #ff4444, #cc0000);
-        }
-        
-        .test-btn.success {
-            background: linear-gradient(135deg, #00d26a, #00a854);
-        }
-        
-        .test-status {
-            padding: 15px;
-            background: rgba(0,0,0,0.3);
-            border-radius: 10px;
-            margin-top: 15px;
-            border: 2px solid #ffd700;
-        }
-        
-        .test-status h3 {
-            color: #ffd700;
-            margin-bottom: 10px;
-        }
-        
-        .test-status p {
-            margin: 5px 0;
-            font-family: monospace;
-            font-size: 0.9rem;
+        .btn:active {
+            transform: translateY(0);
         }
         
         .sync-status {
-            display: inline-block;
-            padding: 3px 8px;
-            border-radius: 4px;
-            font-size: 0.8rem;
-            margin-left: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 15px;
+            margin-top: 20px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            display: none;
         }
         
-        .sync-success {
-            background: rgba(0, 210, 106, 0.3);
-            color: #00d26a;
+        .status-success {
+            background: rgba(76, 175, 80, 0.2);
+            border-left: 4px solid #4CAF50;
         }
         
-        .sync-error {
-            background: rgba(255, 68, 68, 0.3);
-            color: #ff4444;
+        .status-error {
+            background: rgba(244, 67, 54, 0.2);
+            border-left: 4px solid #f44336;
         }
         
-        .sync-none {
-            background: rgba(255, 215, 0, 0.3);
-            color: #ffd700;
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
         }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .history {
+            margin-top: 30px;
+        }
+        
+        .history-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 12px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            backdrop-filter: blur(10px);
+        }
+        
+        .positive { color: #4CAF50; }
+        .negative { color: #f44336; }
     </style>
 </head>
 <body>
-    <div class="app-container">
-        <!-- Шапка -->
-        <header class="header">
-            <div class="logo">
-                <span class="logo-icon">⛏️</span>
-                <h1>Minecraft Cases - ТЕСТ</h1>
-            </div>
-            <div class="user-info">
-                <div class="balance">
-                    <span class="balance-icon">💎</span>
-                    <span id="user-balance">10000</span>
-                </div>
-                <button class="btn-inventory" id="inventory-btn">🎒</button>
-            </div>
-        </header>
-
-        <!-- Тестовые элементы -->
-        <div class="test-controls">
-            <button class="test-btn success" id="add-balance">+1000 💎</button>
-            <button class="test-btn danger" id="remove-balance">-1000 💎</button>
-            <button class="test-btn" id="reset-balance">Сброс: 10000 💎</button>
-            <button class="test-btn success" id="force-sync">Принудительная синхронизация</button>
-            <button class="test-btn" id="clear-storage">Очистить localStorage</button>
-            <button class="test-btn" id="simulate-open">Симулировать открытие (-500)</button>
+    <div class="container">
+        <div class="header">
+            <h1>💰 Баланс WebApp</h1>
+            <p>Синхронизация с Telegram ботом</p>
         </div>
         
-        <div class="test-status">
-            <h3>Статус синхронизации:</h3>
-            <p id="sync-info">Загрузка...</p>
-            <p>Баланс localStorage: <span id="local-balance">-</span></p>
-            <p>Баланс сервера: <span id="server-balance">-</span></p>
-            <p>Кейсы в localStorage: <span id="local-cases">0</span></p>
-            <p>Кейсы с сервера: <span id="server-cases">0</span></p>
-            <p>Telegram Web App: <span id="tg-status">❌ Не доступен</span></p>
+        <div class="user-info">
+            <div>👤 Пользователь: <span id="username">...</span></div>
+            <div>🆔 ID: <span id="userid">...</span></div>
         </div>
-
-        <!-- Основной контент -->
-        <main class="main-content">
-            <section class="cases-grid" id="cases-grid">
-                <!-- Кейсы будут добавлены через JS -->
-            </section>
-        </main>
-
-        <!-- Модальные окна -->
-        <div class="modal-overlay" id="inventory-modal">
-            <div class="modal inventory-modal">
-                <div class="modal-header">
-                    <h2>🎒 Инвентарь</h2>
-                    <button class="close-modal" id="close-inventory">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <div class="inventory-grid" id="inventory-grid">
-                        <!-- Предметы будут добавлены через JS -->
-                    </div>
-                </div>
-            </div>
+        
+        <div class="balance-card">
+            <div>Текущий баланс</div>
+            <div class="balance-amount" id="balance">0</div>
+            <div>рублей</div>
         </div>
-
-        <!-- Экран загрузки -->
-        <div class="loading-overlay" id="loading">
-            <div class="loading-spinner"></div>
-            <p>Загрузка...</p>
+        
+        <div class="controls">
+            <button class="btn btn-success" onclick="changeBalance(100)">
+                <span>➕</span> +100
+            </button>
+            <button class="btn btn-danger" onclick="changeBalance(-100)">
+                <span>➖</span> -100
+            </button>
+            <button class="btn btn-primary" onclick="syncWithBot()">
+                <span>🔄</span> Синхронизировать
+            </button>
+            <button class="btn btn-warning" onclick="resetBalance()">
+                <span>🔄</span> Сбросить
+            </button>
         </div>
-
-        <!-- Фоновые элементы Minecraft -->
-        <div class="mc-background">
-            <div class="grass-block"></div>
-            <div class="dirt-block"></div>
-            <div class="stone-block"></div>
-            <div class="diamond-ore"></div>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <div>Синхронизация...</div>
+        </div>
+        
+        <div class="sync-status" id="status"></div>
+        
+        <div class="history">
+            <h3>📊 История изменений</h3>
+            <div id="historyList"></div>
         </div>
     </div>
-
-    <script src="script.js"></script>
+    
+    <script src="webapp.js"></script>
 </body>
 </html>
