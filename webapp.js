@@ -33,7 +33,10 @@ async function initApp() {
     // Получаем ID пользователя
     userId = getUserId();
     
-    // Загружаем данные
+    // Приоритет: баланс из URL (самые актуальные данные из бота)
+    await loadBalanceFromUrl();
+    
+    // Загружаем данные с сервера
     await loadUserData();
     
     // Обновляем интерфейс
@@ -47,7 +50,7 @@ async function initApp() {
         setupTelegramApp();
     }
     
-    console.log(`📱 WebApp инициализирован. User ID: ${userId}, Баланс: ${userData.balance}`);
+    console.log(`📱 WebApp инициализирован. User ID: ${userId}, Баланс: ${userData.balance} ₽`);
 }
 
 // Настройка Telegram WebApp
@@ -83,16 +86,10 @@ function getUserId() {
     // 2. Из URL параметров
     const urlParams = new URLSearchParams(window.location.search);
     const tgId = urlParams.get('tg_id');
-    const urlBalance = urlParams.get('balance');
     const urlName = urlParams.get('name');
     
     if (urlName) {
         userData.firstName = decodeURIComponent(urlName);
-    }
-    
-    if (urlBalance && tgId) {
-        // Используем баланс из URL (актуальные данные из бота)
-        userData.balance = parseInt(urlBalance) || 10000;
     }
     
     if (tgId) return tgId;
@@ -108,13 +105,43 @@ function getUserId() {
     return newId;
 }
 
+// Загрузка баланса из URL (приоритетные данные из бота)
+function loadBalanceFromUrl() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlBalance = urlParams.get('balance');
+    
+    if (urlBalance) {
+        const newBalance = parseInt(urlBalance);
+        if (!isNaN(newBalance) && newBalance !== userData.balance) {
+            console.log(`🔄 Используем баланс из URL: ${userData.balance} → ${newBalance} ₽`);
+            userData.balance = newBalance;
+            return true;
+        }
+    }
+    return false;
+}
+
 // Автоматическая синхронизация при открытии
 async function autoSync() {
-    // Сначала пытаемся загрузить с сервера
-    await loadUserData();
+    showMessage('🔄 Проверка обновлений...', true);
     
-    // Затем синхронизируем обратно
-    await syncWithServer();
+    // Сначала синхронизируем с сервером (чтобы получить последние данные)
+    const success = await syncWithServer();
+    
+    if (success) {
+        // Если в URL есть флаг принудительной синхронизации, игнорируем локальные данные
+        const urlParams = new URLSearchParams(window.location.search);
+        const forceSync = urlParams.get('force_sync') === 'true';
+        
+        if (forceSync) {
+            console.log('🔄 Принудительная синхронизация из бота');
+            await loadUserData(); // Загружаем свежие данные с сервера
+        }
+        
+        showMessage('✅ Данные синхронизированы', true);
+    } else {
+        showMessage('⚠️ Используем локальные данные', false);
+    }
     
     // Обновляем URL с актуальным балансом
     updateUrlWithBalance();
@@ -125,6 +152,7 @@ function updateUrlWithBalance() {
     if (history.replaceState && window.location.search.includes('tg_id=')) {
         const url = new URL(window.location);
         url.searchParams.set('balance', userData.balance);
+        url.searchParams.set('last_sync', Date.now());
         history.replaceState(null, '', url.toString());
     }
 }
@@ -134,34 +162,35 @@ async function loadUserData() {
     showLoading(true);
     
     try {
-        const response = await fetch(`${SERVER_URL}/api/user/${userId}`);
+        const response = await fetch(`${SERVER_URL}/api/user/${userId}?t=${Date.now()}`);
         
         if (response.ok) {
             const data = await response.json();
             if (data.success) {
+                // Сохраняем старые данные для сравнения
+                const oldBalance = userData.balance;
+                
                 // Обновляем данные с сервера
                 Object.assign(userData, data.user);
                 
-                // Если баланс с сервера отличается от нашего - используем серверный
-                if (data.user.balance !== undefined && data.user.balance !== userData.balance) {
-                    console.log(`🔄 Используем баланс с сервера: ${userData.balance} → ${data.user.balance}`);
-                    userData.balance = data.user.balance;
+                // Логируем изменение баланса
+                if (oldBalance !== userData.balance) {
+                    console.log(`🔄 Баланс обновлен с сервера: ${oldBalance} → ${userData.balance} ₽`);
                 }
                 
                 saveToLocalStorage();
-                showMessage('✅ Данные загружены с сервера', true);
+                return true;
             }
-        } else {
-            // Сервер недоступен, загружаем из localStorage
-            loadFromLocalStorage();
-            showMessage('⚠️ Используем локальные данные', false);
         }
     } catch (error) {
         console.log('❌ Сервер недоступен:', error.message);
-        loadFromLocalStorage();
     } finally {
         showLoading(false);
     }
+    
+    // Если сервер недоступен, загружаем из localStorage
+    loadFromLocalStorage();
+    return false;
 }
 
 // Загрузка из localStorage
@@ -170,12 +199,9 @@ function loadFromLocalStorage() {
     if (saved) {
         try {
             const parsed = JSON.parse(saved);
-            // Объединяем с текущими данными (приоритет у локальных для истории)
             userData = {
                 ...userData,
-                ...parsed,
-                // История объединяется
-                history: [...(parsed.history || []), ...userData.history.slice(-5)]
+                ...parsed
             };
         } catch (e) {
             console.log('❌ Ошибка загрузки из localStorage:', e);
@@ -189,7 +215,7 @@ function saveToLocalStorage() {
         localStorage.setItem(`user_${userId}`, JSON.stringify({
             balance: userData.balance,
             firstName: userData.firstName,
-            history: userData.history.slice(-20), // Сохраняем только последние 20 операций
+            history: userData.history.slice(-20),
             lastSync: userData.lastSync
         }));
     } catch (e) {
@@ -275,10 +301,10 @@ async function syncWithServer(operation = null) {
             updateUrlWithBalance();
             saveToLocalStorage();
             
-            console.log(`✅ Синхронизация успешна. Баланс: ${userData.balance}`);
+            console.log(`✅ Синхронизация успешна. Баланс: ${userData.balance} ₽`);
             return true;
         } else {
-            showMessage(`❌ Ошибка: ${data.message || 'Неизвестная ошибка'}`, false);
+            showMessage(`❌ Ошибка: ${data.error || 'Неизвестная ошибка'}`, false);
             return false;
         }
     } catch (error) {
@@ -328,7 +354,7 @@ function updateHistory() {
     const recentHistory = userData.history
         .slice()
         .reverse()
-        .slice(0, 5); // Последние 5 операций
+        .slice(0, 5);
     
     if (recentHistory.length === 0) {
         historyEl.innerHTML = '<div class="empty-history">История операций пуста</div>';
@@ -465,6 +491,33 @@ async function checkServerStatus() {
     return false;
 }
 
+// Тест синхронизации
+async function testSynchronization() {
+    console.log('🧪 Тест синхронизации начат...');
+    
+    // 1. Получаем текущий баланс
+    const currentBalance = userData.balance;
+    console.log(`Текущий баланс: ${currentBalance} ₽`);
+    
+    // 2. Пытаемся синхронизировать с сервером
+    const syncSuccess = await syncWithServer();
+    
+    // 3. Проверяем результат
+    if (syncSuccess) {
+        console.log(`✅ Синхронизация успешна`);
+        console.log(`Новый баланс: ${userData.balance} ₽`);
+        
+        if (currentBalance !== userData.balance) {
+            console.log(`🔄 Баланс изменился: ${currentBalance} → ${userData.balance} ₽`);
+        }
+        
+        return true;
+    } else {
+        console.log(`❌ Синхронизация не удалась`);
+        return false;
+    }
+}
+
 // Периодическая синхронизация (каждые 30 секунд)
 setInterval(async () => {
     const isOnline = await checkServerStatus();
@@ -473,8 +526,28 @@ setInterval(async () => {
     }
 }, 30000);
 
+// Экспорт функции тестирования в глобальную область
+window.testSync = testSynchronization;
+
 // Инициализация при загрузке
 document.addEventListener('DOMContentLoaded', initApp);
+
+// Добавляем кнопку тестирования в интерфейс (для разработки)
+document.addEventListener('DOMContentLoaded', () => {
+    // Добавляем кнопку тестирования только в режиме разработки
+    if (window.location.href.includes('localhost') || window.location.href.includes('127.0.0.1')) {
+        const controlsDiv = document.querySelector('.controls');
+        if (controlsDiv) {
+            const testBtn = document.createElement('button');
+            testBtn.className = 'btn';
+            testBtn.innerHTML = '🧪 Тест синхронизации';
+            testBtn.style.background = 'linear-gradient(135deg, #9C27B0, #7B1FA2)';
+            testBtn.style.gridColumn = 'span 2';
+            testBtn.onclick = testSynchronization;
+            controlsDiv.appendChild(testBtn);
+        }
+    }
+});
 
 // Экспорт для тестирования
 if (typeof module !== 'undefined' && module.exports) {
@@ -482,6 +555,7 @@ if (typeof module !== 'undefined' && module.exports) {
         getUserId,
         changeBalance,
         syncWithServer,
-        updateUI
+        updateUI,
+        testSynchronization
     };
 }
