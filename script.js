@@ -31,14 +31,10 @@ let texturesCache = {
 };
 
 // Переменные для рулетки
-let scrollPosition = 0;
-let targetScroll = 0;
-let isScrolling = false;
 let rouletteItems = [];
 let winningItemIndex = 0;
 let animationStartTime = 0;
 let isRouletteActive = false;
-let animationPhase = 0;
 
 // DOM элементы
 const elements = {
@@ -603,7 +599,7 @@ function updateUI() {
     renderInventory();
 }
 
-// Отрисовка кейсов с PNG - ИЗМЕНЕНО: добавлены touch-события
+// Отрисовка кейсов с PNG - улучшенная доступность и кликабельность
 function renderCases() {
     console.log('Отрисовка кейсов...');
     if (!elements.casesGrid) return;
@@ -620,6 +616,8 @@ function renderCases() {
         caseCard.className = 'case-card';
         caseCard.dataset.id = caseItem.id;
         caseCard.style.setProperty('--index', index);
+        caseCard.setAttribute('role', 'button');
+        caseCard.setAttribute('tabindex', '0');
         
         // Получаем HTML для изображения кейса
         const caseImageHTML = getCaseImageHTML(caseItem);
@@ -642,38 +640,15 @@ function renderCases() {
             </div>
         `;
         
-        // Добавляем обработчики для touch устройств
-        let touchStartTime = 0;
-        let touchStartX = 0;
-        let touchStartY = 0;
-        
-        caseCard.addEventListener('touchstart', (e) => {
-            touchStartTime = Date.now();
-            touchStartX = e.touches[0].clientX;
-            touchStartY = e.touches[0].clientY;
-            e.preventDefault();
-        }, { passive: false });
-        
-        caseCard.addEventListener('touchend', (e) => {
-            const touchEndTime = Date.now();
-            const touchEndX = e.changedTouches[0].clientX;
-            const touchEndY = e.changedTouches[0].clientY;
-            
-            // Проверяем, был ли это тап (а не свайп)
-            const timeDiff = touchEndTime - touchStartTime;
-            const xDiff = Math.abs(touchEndX - touchStartX);
-            const yDiff = Math.abs(touchEndY - touchStartY);
-            
-            if (timeDiff < 500 && xDiff < 10 && yDiff < 10) {
+        caseCard.addEventListener('click', () => openCaseModal(caseItem));
+        caseCard.addEventListener('pointerup', (event) => {
+            if (event.pointerType === 'touch') {
                 openCaseModal(caseItem);
             }
-            e.preventDefault();
-        }, { passive: false });
-        
-        // Оставляем обработчик клика для десктопов
-        caseCard.addEventListener('click', (e) => {
-            // Проверяем, не было ли это событие вызвано touch событием
-            if (Date.now() - touchStartTime > 100) {
+        });
+        caseCard.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
                 openCaseModal(caseItem);
             }
         });
@@ -828,27 +803,16 @@ function prepareRouletteForCase(caseItem) {
     // Генерируем начальную последовательность предметов
     rouletteItems = generateInitialRouletteSequence(caseItem);
     
-    // Сбрасываем позицию
-    scrollPosition = 0;
-    targetScroll = 0;
-    isScrolling = false;
-    
     // Отрисовываем предметы
     renderRouletteItems();
     
-    // Даем время на отрисовку
-    setTimeout(() => {
+    requestAnimationFrame(() => {
         if (!elements.rouletteContainer || !elements.itemsTrack) return;
-        
-        // Центрируем первый предмет
         const { containerWidth, itemWidth } = getRouletteMeasurements();
-        
-        // Вычисляем позицию чтобы первый предмет был в центре
         const initialPosition = (containerWidth / 2) - (itemWidth / 2);
-        
-        elements.itemsTrack.style.transform = `translateX(${initialPosition}px)`;
         elements.itemsTrack.style.transition = 'none';
-    }, 50);
+        elements.itemsTrack.style.transform = `translateX(${initialPosition}px)`;
+    });
 }
 
 // Генерация начальной последовательности для рулетки
@@ -923,18 +887,12 @@ async function openCase() {
     elements.openCaseBtn.innerHTML = '⏳ Открывается...';
     isOpening = true;
     
-    // ЗАПУСКАЕМ АНИМАЦИЮ РУЛЕТКИ СРАЗУ
-    const animationPromise = startRouletteAnimation();
-    
-    // ПАРАЛЛЕЛЬНО отправляем запрос на сервер
+    // Отправляем запрос на сервер, чтобы получить выигрышный предмет
     const serverPromise = sendDataToBot('open_case', {
         case_id: currentCase.id
     });
     
     try {
-        // Ждем завершения анимации рулетки (это происходит быстро)
-        await animationPromise;
-        
         // Затем ждем ответ от сервера
         const response = await serverPromise;
         
@@ -957,6 +915,9 @@ async function openCase() {
             
             console.log('Кейс успешно открыт');
             
+            // Запускаем анимацию рулетки с данными сервера
+            await startRouletteAnimation(currentItem);
+            
             // Показываем результат
             showResult(currentItem);
             
@@ -967,7 +928,6 @@ async function openCase() {
             console.error('Ошибка открытия кейса:', response?.error);
             alert(response?.error || 'Ошибка при открытии кейса');
             
-            // Откатываем изменения
             userData.balance += currentCase.price;
             updateUI();
         }
@@ -976,7 +936,6 @@ async function openCase() {
         console.error('Ошибка при открытии кейса:', error);
         alert('Ошибка соединения с сервером');
         
-        // Откатываем изменения
         userData.balance += currentCase.price;
         updateUI();
     } finally {
@@ -1017,28 +976,26 @@ function generateWonItem(caseItem) {
 }
 
 // Запуск анимации рулетки - УЛУЧШЕННАЯ БЫСТРАЯ ВЕРСИЯ
-function startRouletteAnimation() {
+function startRouletteAnimation(wonItem) {
     return new Promise((resolve) => {
         isRouletteActive = true;
         
-        // Генерируем выигрышный предмет для анимации
-        const wonItem = generateWonItem(currentCase);
-        currentItem = wonItem;
+        const resolvedItem = wonItem || generateWonItem(currentCase);
+        currentItem = resolvedItem;
         
         // Генерируем полную последовательность с выигрышным предметом в центре
-        rouletteItems = generateFullRouletteSequence(wonItem);
+        rouletteItems = generateFullRouletteSequence(resolvedItem);
         
         // Вычисляем индекс выигрышного предмета
         winningItemIndex = Math.floor(rouletteItems.length / 2);
-        rouletteItems[winningItemIndex] = {...wonItem};
+        rouletteItems[winningItemIndex] = {...resolvedItem};
         
         // Отрисовываем предметы заново
         renderRouletteItems();
         
-        // Даем браузеру время на отрисовку
-        setTimeout(() => {
+        requestAnimationFrame(() => {
             startRouletteAnimationSequence(resolve);
-        }, 50);
+        });
     });
 }
 
@@ -1076,8 +1033,6 @@ function generateFullRouletteSequence(wonItem) {
 // Запуск анимации рулетки - БЫСТРАЯ ВЕРСИЯ
 function startRouletteAnimationSequence(resolve) {
     console.log('Запуск анимации рулетки');
-    isScrolling = true;
-    
     if (!elements.rouletteContainer || !elements.itemsTrack) {
         resolve();
         return;
@@ -1094,13 +1049,11 @@ function startRouletteAnimationSequence(resolve) {
         elements.itemsTrack.style.transform = `translateX(${startPosition}px)`;
     }
     
-    // Даем браузеру время на отрисовку
-    setTimeout(() => {
-        animationStartTime = Date.now();
+    requestAnimationFrame(() => {
+        animationStartTime = performance.now();
         const animationDuration = 2600;
-        
         animateRoulette(startPosition, finalPosition, animationDuration, resolve);
-    }, 50);
+    });
 }
 
 // Анимация рулетки - ОПТИМИЗИРОВАННАЯ
@@ -1110,11 +1063,9 @@ function animateRoulette(startPos, endPos, duration, resolve) {
         return;
     }
     
-    const elapsed = Date.now() - animationStartTime;
-    let progress = Math.min(elapsed / duration, 1);
-    
-    // Плавное замедление к финалу
-    let easedProgress = easeOutCubic(progress);
+    const elapsed = performance.now() - animationStartTime;
+    const progress = Math.min(elapsed / duration, 1);
+    const easedProgress = easeOutCubic(progress);
     
     const currentPos = startPos + (endPos - startPos) * easedProgress;
     
@@ -1138,10 +1089,10 @@ function updateCenterZoneItem() {
     
     const containerRect = elements.rouletteContainer.getBoundingClientRect();
     const centerX = containerRect.left + containerRect.width / 2;
-    const centerZone = elements.rouletteContainer.querySelector('.center-zone');
-    const zoneWidth = centerZone ? centerZone.getBoundingClientRect().width / 2 : 60;
+    const { itemWidth } = getRouletteMeasurements();
+    const zoneWidth = itemWidth / 2;
     
-    const items = document.querySelectorAll('.roulette-item');
+    const items = elements.itemsTrack?.querySelectorAll('.roulette-item') || [];
     let closestItem = null;
     let closestDistance = Infinity;
     
@@ -1158,7 +1109,7 @@ function updateCenterZoneItem() {
         }
     });
     
-    if (closestItem && closestDistance < zoneWidth) {
+    if (closestItem && closestDistance <= zoneWidth) {
         closestItem.classList.add('highlighted');
     }
 }
@@ -1183,12 +1134,11 @@ function getRouletteMeasurements() {
 // Завершение анимации рулетки - БЫСТРАЯ ВЕРСИЯ
 function finishRouletteAnimation(resolve) {
     console.log('Завершение анимации рулетки');
-    isScrolling = false;
-    
     setTimeout(() => {
-        const highlightedItem = document.querySelector('.roulette-item.highlighted');
-        if (highlightedItem) {
-            highlightedItem.classList.add('winning-spin');
+        const items = elements.itemsTrack?.querySelectorAll('.roulette-item') || [];
+        const winningItem = items[winningItemIndex];
+        if (winningItem) {
+            winningItem.classList.add('highlighted', 'winning-item', 'winning-spin');
         }
         
         setTimeout(() => {
